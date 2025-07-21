@@ -420,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? ''
                               : DateFormat('yyyy-MM-dd').format(_returnDay!)),
                       decoration: InputDecoration(
-                        labelText: "Select  Your Return Date",
+                        labelText: "Select Your Return Date",
                         labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                         prefixIcon: const Icon(Icons.calendar_today, color: Colors.white),
                         enabledBorder: OutlineInputBorder(
