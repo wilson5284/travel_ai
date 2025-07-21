@@ -1,0 +1,133 @@
+// lib/utils/pdf_export.dart
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+class PdfExport {
+  static Future<Uint8List> generatePdf(
+      String location,
+      String departDay,
+      String returnDay,
+      double budget,
+      List<Map<String, dynamic>> itinerary,
+      List<String> suggestions,
+      ) async {
+    final pdf = pw.Document();
+
+    // Load a font that supports various characters (e.g., emojis if needed, though PDF support for them is tricky)
+    // You might need to add a custom font file (.ttf) to your assets and load it.
+    // For simplicity, we'll use a basic font here.
+    // To support complex characters/emojis fully, you'd need a font like Noto Color Emoji or similar.
+    final font = await PdfGoogleFonts.notoSansRegular();
+    final boldFont = await PdfGoogleFonts.notoSansBold();
+
+    // Group itinerary by day
+    Map<String, List<Map<String, dynamic>>> groupedItinerary = {};
+    for (var item in itinerary) {
+      final dayKey = item['day'] as String? ?? 'Unknown Day';
+      if (!groupedItinerary.containsKey(dayKey)) {
+        groupedItinerary[dayKey] = [];
+      }
+      groupedItinerary[dayKey]!.add(item);
+    }
+
+    // Sort day keys numerically
+    final sortedDayKeys = groupedItinerary.keys.toList();
+    sortedDayKeys.sort((a, b) {
+      final aNum = int.tryParse(a.replaceAll('Day ', '')) ?? 0;
+      final bNum = int.tryParse(b.replaceAll('Day ', '')) ?? 0;
+      return aNum.compareTo(bNum);
+    });
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Center(
+              child: pw.Text(
+                'Travel Itinerary for $location',
+                style: pw.TextStyle(font: boldFont, fontSize: 28, color: PdfColors.blueGrey900),
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Center(
+              child: pw.Text(
+                'Dates: $departDay to $returnDay',
+                style: pw.TextStyle(font: font, fontSize: 16),
+              ),
+            ),
+            pw.Center(
+              child: pw.Text(
+                'Budget: RM${budget.toStringAsFixed(2)}',
+                style: pw.TextStyle(font: font, fontSize: 16),
+              ),
+            ),
+            pw.Divider(thickness: 1),
+            pw.SizedBox(height: 20),
+
+            // Itinerary Details
+            ...sortedDayKeys.map((dayKey) {
+              final dayItems = groupedItinerary[dayKey]!;
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    dayKey, // e.g., "Day 1"
+                    style: pw.TextStyle(font: boldFont, fontSize: 20, color: PdfColors.deepPurple700),
+                  ),
+                  pw.SizedBox(height: 8),
+                  ...dayItems.map((item) {
+                    return pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 10, bottom: 5),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            '• ${item['time'] ?? 'N/A'}: ${item['place']}',
+                            style: pw.TextStyle(font: boldFont, fontSize: 14),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.only(left: 10),
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text('Activity: ${item['activity']}', style: pw.TextStyle(font: font, fontSize: 12)),
+                                pw.Text('Duration: ${item['estimated_duration']}', style: pw.TextStyle(font: font, fontSize: 12)),
+                                pw.Text('Cost: RM${item['estimated_cost']}', style: pw.TextStyle(font: font, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(height: 5),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  pw.SizedBox(height: 15),
+                ],
+              );
+            }).toList(),
+
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'Suggestions:',
+              style: pw.TextStyle(font: boldFont, fontSize: 18, color: PdfColors.green700),
+            ),
+            pw.SizedBox(height: 8),
+            ...suggestions.map((s) => pw.Text('• $s', style: pw.TextStyle(font: font, fontSize: 12))),
+            pw.SizedBox(height: 20),
+            pw.Center(
+              child: pw.Text(
+                'Generated by Navinera',
+                style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.grey600),
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+}
