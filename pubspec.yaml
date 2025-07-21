@@ -1,0 +1,45 @@
+name: travel_ai
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.3
+
+dependencies:
+  cloud_firestore: ^4.15.0
+  device_preview: ^1.2.0
+  firebase_core: ^2.18.0
+  flutter:
+    sdk: flutter
+  flutter_gemini: 3.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
+  font_awesome_flutter: ^10.8.0
+  google_fonts: ^6.2.1
+  google_generative_ai: ^0.2.0
+  http: ^1.1.0
+  cupertino_icons: ^1.0.6
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+  adaptive_icon_foreground: "assets/logo.png"
+  adaptive_icon_background: "#000000"
+
+flutter_native_splash:
+  color: "#000000"
+  image: "assets/splash.png"
+  android_12:
+    image: "assets/splash.png"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

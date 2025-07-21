@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "680526943834",
+    "project_id": "travelai-39572",
+    "storage_bucket": "travelai-39572.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:680526943834:android:5f8435a7d28e6ccf5d6a63",
+        "android_client_info": {
+          "package_name": "com.example.dynamic_itinerary"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvoaTvFOzNSY0RHUEVX7k5EBjE1d7rTdg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:680526943834:android:8b0881a062dae2b75d6a63",
+        "android_client_info": {
+          "package_name": "com.example.travel_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvoaTvFOzNSY0RHUEVX7k5EBjE1d7rTdg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:680526943834:android:796288ad003d50225d6a63",
+        "android_client_info": {
+          "package_name": "com.example.travel_ai_two"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvoaTvFOzNSY0RHUEVX7k5EBjE1d7rTdg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
