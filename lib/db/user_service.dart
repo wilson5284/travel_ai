@@ -1,6 +1,9 @@
 // lib/db/user_service.dart
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../model/user_model.dart';
 
 class UserService {
@@ -40,15 +43,24 @@ class UserService {
     }
   }
 
-  Future<void> addUser(UserModel user, String uid) async {
+  Future<void> addUser(UserModel user, String uid, {XFile? image}) async {
     try {
-      await _users.doc(uid).set(user.toMap());
+      String? avatarUrl;
+      if (image != null) {
+        final storageRef = FirebaseStorage.instance.ref().child('avatars/$uid');
+        await storageRef.putFile(File(image.path));
+        avatarUrl = await storageRef.getDownloadURL();
+      }
+      final userData = user.toMap();
+      if (avatarUrl != null) {
+        userData['avatarUrl'] = avatarUrl;
+      }
+      await _users.doc(uid).set(userData);
     } catch (e) {
-      print('Error adding user to Firestore: $e');
+      print('Error in addUser: $e');
       rethrow;
     }
   }
-
   Future<fbAuth.User?> login(String email, String password) async {
     try {
       fbAuth.UserCredential result = await _auth.signInWithEmailAndPassword(
@@ -80,12 +92,11 @@ class UserService {
     }
   }
 
-  Future<void> updateUserAvatar(String uid, String avatarUrl) async {
+  Future<void> updateUserPhoto(String uid, String photoUrl) async {
     try {
-      await _users.doc(uid).update({'avatarUrl': avatarUrl});
+      await _users.doc(uid).update({'avatarUrl': photoUrl});
     } catch (e) {
-      print('Error updating user avatar: $e');
-      rethrow;
+      print('Error updating user photo: $e');
     }
   }
 

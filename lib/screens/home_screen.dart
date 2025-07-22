@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/bottom_nav_bar.dart'; // You need to create this file
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_amountController.text.isEmpty || _baseCurrency == null || _targetCurrency.isEmpty) return;
 
     final amount = _amountController.text.trim();
+    // Replace 'YOUR_API_KEY' with your actual ExchangeRate-API key
     final url = Uri.parse(
       'https://v6.exchangerate-api.com/v6/fb86156312e869b5e58cc332/pair/$_baseCurrency/$_targetCurrency/$amount',
     );
@@ -128,6 +129,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Text('Welcome to Travel AI Home!', style: TextStyle(fontSize: 20)),
             const SizedBox(height: 30),
+
+            // Currency Converter
             Card(
               elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -244,6 +247,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+
+            const SizedBox(height: 30),
+
           ],
         ),
       ),

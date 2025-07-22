@@ -1,9 +1,11 @@
 // lib/screens/register_screen.dart
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../db/user_service.dart';
 import '../../model/user_model.dart';
 import 'login_screen.dart';
+import 'dart:io';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
@@ -14,18 +16,17 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _countryController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _genderController = TextEditingController();
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _rePasswordController = TextEditingController();
-
   String _preferredLanguage = 'English';
   String _preferredCurrency = 'USD';
+  String? _gender = 'Male';
+  XFile? _image;
   bool _isLoading = false;
 
   String? _validateUsername(String? value) {
@@ -72,6 +73,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  String? _validateGender(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Gender is required';
+    return null;
+  }
+
   Future<void> _selectDate(BuildContext ctx) async {
     final picked = await showDatePicker(
       context: ctx,
@@ -81,6 +87,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
     if (picked != null) {
       _dobController.text = picked.toIso8601String().split('T').first;
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _image = pickedFile;
+      });
     }
   }
 
@@ -110,20 +126,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
         preferredCurrency: _preferredCurrency,
         country: _countryController.text.trim(),
         phone: _phoneController.text.trim(),
-        gender: _genderController.text.trim().isEmpty ? null : _genderController.text.trim(),
+        gender: _gender,
         dob: _dobController.text.trim(),
         createdAt: DateTime.now().toIso8601String(),
         role: 'user',
+        avatarUrl: null,
       );
 
-      await UserService().addUser(newUser, uid);
+      await UserService().addUser(newUser, uid, image: _image);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Registration successful!')),
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()), // Adjust to your login screen
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
     } on fbAuth.FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +171,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             children: [
               const SizedBox(height: 20),
               const Text('Register', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundImage: _image != null ? FileImage(File(_image!.path)) : null,
+                  child: _image == null ? const Icon(Icons.person, size: 50) : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: _pickImage,
+                child: const Text('Select Avatar', style: TextStyle(color: Colors.blue)),
+              ),
+              const SizedBox(height: 20),
 
               // Username
               TextFormField(
@@ -203,13 +234,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 15),
 
               // Gender
-              TextFormField(
-                controller: _genderController,
+              DropdownButtonFormField<String>(
+                value: _gender,
+                items: ['Male', 'Female']
+                    .map((gender) => DropdownMenuItem(value: gender, child: Text(gender)))
+                    .toList(),
+                onChanged: (val) => setState(() => _gender = val!),
                 decoration: InputDecoration(
-                  labelText: 'Gender (Male/Female)',
+                  labelText: 'Gender',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Gender is required' : null,
+                validator: _validateGender,
               ),
               const SizedBox(height: 15),
 

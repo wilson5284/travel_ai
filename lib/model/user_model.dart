@@ -1,21 +1,22 @@
 // lib/model/user_model.dart
 class UserModel {
-  String? uid;
-  String? username;
-  String? email;
-  String? preferredLanguage;
-  String? preferredCurrency;
-  String? country;
-  String? phone;
-  String? gender;
-  String? dob;
-  String? createdAt;
-  String? role;
+  final String? uid;
+  final String username;
+  final String email;
+  final String? preferredLanguage;
+  final String? preferredCurrency;
+  final String? country;
+  final String? phone;
+  final String? gender;
+  final String? dob;
+  final String? createdAt;
+  final String? role;
+  final String? avatarUrl;
 
   UserModel({
     this.uid,
-    this.username,
-    this.email,
+    required this.username,
+    required this.email,
     this.preferredLanguage,
     this.preferredCurrency,
     this.country,
@@ -24,23 +25,8 @@ class UserModel {
     this.dob,
     this.createdAt,
     this.role,
+    this.avatarUrl,
   });
-
-  factory UserModel.fromMap(Map<String, dynamic> map) {
-    return UserModel(
-      uid: map['uid'],
-      username: map['username'],
-      email: map['email'],
-      preferredLanguage: map['preferredLanguage'],
-      preferredCurrency: map['preferredCurrency'],
-      country: map['country'],
-      phone: map['phone'],
-      gender: map['gender'],
-      dob: map['dob'],
-      createdAt: map['createdAt'],
-      role: map['role'],
-    );
-  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -55,34 +41,24 @@ class UserModel {
       'dob': dob,
       'createdAt': createdAt,
       'role': role,
+      'avatarUrl': avatarUrl,
     };
   }
 
-  UserModel copyWith({
-    String? uid,
-    String? username,
-    String? email,
-    String? preferredLanguage,
-    String? preferredCurrency,
-    String? country,
-    String? phone,
-    String? gender,
-    String? dob,
-    String? createdAt,
-    String? role,
-  }) {
+  factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
-      uid: uid ?? this.uid,
-      username: username ?? this.username,
-      email: email ?? this.email,
-      preferredLanguage: preferredLanguage ?? this.preferredLanguage,
-      preferredCurrency: preferredCurrency ?? this.preferredCurrency,
-      country: country ?? this.country,
-      phone: phone ?? this.phone,
-      gender: gender ?? this.gender,
-      dob: dob ?? this.dob,
-      createdAt: createdAt ?? this.createdAt,
-      role: role ?? this.role,
+      uid: map['uid'] as String?,
+      username: map['username'] as String,
+      email: map['email'] as String,
+      preferredLanguage: map['preferredLanguage'] as String?,
+      preferredCurrency: map['preferredCurrency'] as String?,
+      country: map['country'] as String?,
+      phone: map['phone'] as String?,
+      gender: map['gender'] as String?,
+      dob: map['dob'] as String?,
+      createdAt: map['createdAt'] as String?,
+      role: map['role'] as String?,
+      avatarUrl: map['avatarUrl'] as String?,
     );
   }
 }
