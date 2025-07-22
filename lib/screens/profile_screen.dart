@@ -265,7 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 2), // Adjust as per your NavBar
+      bottomNavigationBar: const BottomNavBar(currentIndex: 3), // Adjust as per your NavBar
     );
   }
 }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:travel_ai/screens/all_announcements_screen.dart';
 import 'package:travel_ai/screens/my_reports_list_screen.dart';
-
+import 'firebase_options.dart';
 import 'admin/admin_announcement_list_screen.dart';
 import 'admin/report_management_screen.dart';
 import 'admin/user_management_screen.dart';
@@ -26,6 +26,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.blue),
       initialRoute: '/login', // Change initialRoute to '/login'
       routes: {
+        //'/splash': (context) => const LoginScreen(),
         '/login': (context) => const LoginScreen(),
         '/report': (context) => const ReportScreen(),
         '/admin/reports': (context) => const ReportManagementScreen(),
