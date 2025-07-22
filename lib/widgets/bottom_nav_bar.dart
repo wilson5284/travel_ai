@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/chatbot_screen.dart';
+import '../screens/itinerary_screen.dart';
 import '../screens/profile_screen.dart';
 
 class BottomNavBar extends StatelessWidget {
@@ -26,6 +27,11 @@ class BottomNavBar extends StatelessWidget {
       case 2:
         Navigator.pushReplacement(
           context,
+          MaterialPageRoute(builder: (_) => const ItineraryScreen()),
+        );
+      case 3:
+        Navigator.pushReplacement(
+          context,
           MaterialPageRoute(builder: (_) => const ProfileScreen()),
         );
         break;
@@ -42,6 +48,7 @@ class BottomNavBar extends StatelessWidget {
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chatbot'),
+        BottomNavigationBarItem(icon: Icon(Icons.create), label: 'Itinerary'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
       ],
     );
