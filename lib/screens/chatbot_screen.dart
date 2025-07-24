@@ -808,11 +808,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ),
         ],
       ),
-<<<<<<< HEAD
-      bottomNavigationBar: const BottomNavBar(currentIndex: 2),
-=======
       bottomNavigationBar: const BottomNavBar(currentIndex: 1),
->>>>>>> ef10df6a17e9d6579d4bfd5fc074ac3abd72650f
     );
   }
 }

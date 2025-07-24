@@ -829,7 +829,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 1), // Adjust as per your NavBar
+      bottomNavigationBar: const BottomNavBar(currentIndex: 2), // Adjust as per your NavBar
     );
   }
 }

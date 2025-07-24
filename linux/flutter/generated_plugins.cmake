@@ -4,10 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
-<<<<<<< HEAD
   printing
-=======
->>>>>>> ef10df6a17e9d6579d4bfd5fc074ac3abd72650f
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
