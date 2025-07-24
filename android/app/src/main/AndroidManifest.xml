@@ -1,7 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<<<<<<< HEAD
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET"/>
+=======
+>>>>>>> ef10df6a17e9d6579d4bfd5fc074ac3abd72650f
     <application
         android:label="travel_ai"
         android:name="${applicationName}"
