@@ -1,3 +1,4 @@
+// lib/screens/home/report_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -21,15 +22,17 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in.");
+      if (user == null) {
+        throw Exception("User not logged in."); // Ensure user is logged in
+      }
 
       await FirebaseFirestore.instance.collection('reports').add({
         'userId': user.uid,
         'email': user.email,
         'report': _reportController.text.trim(),
-        'status': 'pending',
+        'status': 'pending', // Initial status
         'createdAt': Timestamp.now(),
-        'lastUpdated': Timestamp.now(), // Added lastUpdated for admin sorting
+        'lastUpdated': Timestamp.now(), // Used for sorting in lists
         'messages': [ // Initialize with the first message from the user
           {
             'sender': 'user',
@@ -42,14 +45,20 @@ class _ReportScreenState extends State<ReportScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Report submitted successfully!')),
       );
-
-      _reportController.clear();
+      _reportController.clear(); // Clear form on success
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Go back after successful submission
+      }
     } catch (e) {
+      // --- IMPORTANT DEBUGGING LINE ---
+      print('Firebase Report Submission Error: $e'); // This will show in your console
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+        SnackBar(content: Text('Failed to submit report. Error: ${e.toString()}')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (context.mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -87,7 +96,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Submit Report', style: TextStyle(fontSize: 16)),
+                    : const Text('Submit Report', style: TextStyle(fontSize: 16, color: Colors.white)),
               ),
             ],
           ),

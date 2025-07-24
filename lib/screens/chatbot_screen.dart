@@ -1,12 +1,13 @@
 // lib/screens/chatbot_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Import for Clipboard functionality
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/bottom_nav_bar.dart';
-import 'package:flutter_markdown/flutter_markdown.dart'; // Import the markdown package
-import '../widgets/typing_indicator.dart'; // Import your new typing indicator widget
+import 'package:flutter_markdown/flutter_markdown.dart';
+import '../widgets/typing_indicator.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -24,7 +25,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   String? _userId;
   String? _currentChatSessionId;
 
-  static const String deepSeekKey = 'sk-7f50d215dd784f7a82a12212c8802525';
+  // New variables for in-chat search functionality (like the screenshot)
+  bool _isInChatSearching = false; // To control visibility of the in-chat search bar
+  final TextEditingController _inChatSearchController = TextEditingController();
+  String _inChatSearchQuery = '';
+  List<int> _matchingMessageIndices = []; // Stores indices of messages with search query
+  int _currentMatchIndex = -1; // Index of the currently highlighted match
+
+  // New variables for drawer search functionality
+  final TextEditingController _drawerSearchController = TextEditingController();
+  String _drawerSearchQuery = '';
+
+
+  static const String geminiKey = 'AIzaSyATwBN9CJBt5fl9BNJ8k3WahI2HF8CY94g';
+
+  static const String _geminiModel = 'gemini-1.5-flash';
 
   static const Set<String> _travelKeywords = {
     'trip', 'travel', 'plan', 'destination', 'flight', 'hotel', 'visa',
@@ -35,23 +50,37 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     'currency', 'local', 'culture', 'food', 'restaurant', 'shopping', 'activity',
     'train', 'bus', 'car', 'cruise', 'ferry', 'map', 'direction', 'luggage',
     'packing', 'safety', 'emergency', 'customs', 'border', 'exchange rate',
-    'time difference', 'weather', 'climate', 'festival', 'event', 'attraction',
+    'time difference',
+    'festival', 'event', 'attraction',
     'landmark', 'historical site', 'national park', 'wildlife', 'safari',
     'trekking', 'hiking', 'camping', 'backpacking', 'resort', 'motel', 'hostel',
     'bungalow', 'villa', 'condo', 'apartment', 'air bnb', 'guesthouse',
     'bed and breakfast', 'inn', 'residency', 'suite', 'room', 'check-in', 'check-out'
   };
 
+  // Define color scheme consistent with InsuranceSuggestionScreen
+  final Color _darkPurple = const Color(0xFF6A1B9A);
+  final Color _mediumPurple = const Color(0xFF9C27B0);
+  final Color _lightPurple = const Color(0xFFF3E5F5);
+  final Color _lightBeige = const Color(0xFFFFF5E6);
+  final Color _white = Colors.white;
+  final Color _greyText = Colors.grey.shade600;
+
+
   @override
   void initState() {
     super.initState();
     _initializeChatbot();
+    _inChatSearchController.addListener(_onInChatSearchChanged);
+    _drawerSearchController.addListener(_onDrawerSearchChanged);
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _inChatSearchController.dispose();
+    _drawerSearchController.dispose();
     super.dispose();
   }
 
@@ -86,6 +115,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     setState(() {
       _isLoading = true;
+      _isInChatSearching = false; // Reset in-chat search state
+      _inChatSearchController.clear();
+      _inChatSearchQuery = '';
+      _matchingMessageIndices.clear();
+      _currentMatchIndex = -1;
+      _drawerSearchController.clear(); // Clear drawer search
+      _drawerSearchQuery = ''; // Clear drawer search query
     });
 
     try {
@@ -126,6 +162,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
               'timestamp': msg['timestamp'] as Timestamp,
             };
           }).toList());
+          // No need to filter messages here, _onInChatSearchChanged handles it
         });
         _scrollToBottom();
       } else {
@@ -152,6 +189,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     setState(() {
       _messages.clear();
       _isLoading = true;
+      _isInChatSearching = false; // Reset in-chat search state
+      _inChatSearchController.clear();
+      _inChatSearchQuery = '';
+      _matchingMessageIndices.clear();
+      _currentMatchIndex = -1;
+      _drawerSearchController.clear(); // Clear drawer search
+      _drawerSearchQuery = ''; // Clear drawer search query
     });
 
     _currentChatSessionId = FirebaseFirestore.instance
@@ -181,6 +225,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         .doc(_currentChatSessionId);
 
     _messages.add(message);
+    // After adding a new message, re-run in-chat search if active
+    if (_isInChatSearching && _inChatSearchQuery.isNotEmpty) {
+      _onInChatSearchChanged();
+    }
 
     try {
       await chatSessionRef.set(
@@ -203,20 +251,25 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _isLoading = true;
     });
 
-    final url = Uri.parse('https://api.deepseek.com/v1/chat/completions');
+    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$geminiKey');
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $deepSeekKey',
     };
+
     final body = json.encode({
-      "model": "deepseek-chat",
-      "messages": [
+      "contents": [
         {
-          "role": "system",
-          "content": "You are a friendly and helpful travel assistant chatbot. Greet the user and ask how you can assist them with their travel plans. Keep your greeting concise and friendly. Reply in clean sentences with no markdown."
+          "parts": [
+            {"text": "You are a friendly and helpful travel assistant chatbot. Greet the user and ask how you can assist them with their travel plans. Keep your greeting concise and friendly. Reply in clean sentences with no markdown."}
+          ]
         }
       ],
-      "temperature": 0.7
+      "safetySettings": [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+      ],
     });
 
     try {
@@ -224,12 +277,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       final data = json.decode(response.body);
 
       if (response.statusCode == 200 &&
-          data['choices'] != null &&
-          data['choices'].isNotEmpty &&
-          data['choices'][0]['message'] != null) {
-        String greeting = data['choices'][0]['message']['content'];
-        // Keep _formatResponse commented out or remove it here if it interferes with DeepSeek's desired formatting
-        // greeting = _formatResponse(greeting);
+          data['candidates'] != null &&
+          data['candidates'].isNotEmpty &&
+          data['candidates'][0]['content'] != null &&
+          data['candidates'][0]['content']['parts'] != null &&
+          data['candidates'][0]['content']['parts'].isNotEmpty) {
+        String greeting = data['candidates'][0]['content']['parts'][0]['text'];
 
         if (_preferredLanguage != 'English') {
           greeting = await _translateText(greeting, _preferredLanguage);
@@ -291,11 +344,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
     _scrollToBottom();
 
-    // --- START OF MODIFIED LOGIC FOR KEYWORD CHECK ---
     bool isTravelQuestion = false;
     String processedInputForKeywordCheck = userInput;
 
-    // Only translate for keyword check if not already in English
     if (_preferredLanguage != 'English') {
       processedInputForKeywordCheck = await _translateText(userInput, 'English');
     }
@@ -321,30 +372,37 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _scrollToBottom();
       return;
     }
-    // --- END OF MODIFIED LOGIC FOR KEYWORD CHECK ---
 
-    final url = Uri.parse('https://api.deepseek.com/v1/chat/completions');
+    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$geminiKey');
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $deepSeekKey',
     };
 
-    List<Map<String, String>> conversationHistoryForAI = [];
+    List<Map<String, dynamic>> conversationHistoryForAI = [];
     conversationHistoryForAI.add({
-      "role": "system",
-      "content": "You are a helpful travel assistant. Always answer questions about travel, tourism, places, itineraries, safety, visas, transportation, languages, and culture. Reply in clear, friendly sentences with proper Markdown formatting for lists, bold text, and paragraphs. Do not include introductory phrases like 'Here's your itinerary:' but start directly with the content."
+      "role": "user",
+      "parts": [
+        {"text": "You are a helpful travel assistant. Always answer questions about travel, tourism, places, itineraries, safety, visas, transportation, languages, and culture. Reply in clear, friendly sentences with proper Markdown formatting for lists, bold text, and paragraphs. Do not include introductory phrases like 'Here's your itinerary:' but start directly with the content."}
+      ]
     });
+
     for (var msg in _messages) {
       conversationHistoryForAI.add({
-        'role': msg['role'] as String,
-        'content': msg['content'] as String,
+        'role': msg['role'] == 'user' ? 'user' : 'model',
+        'parts': [
+          {'text': msg['content'] as String},
+        ],
       });
     }
 
     final body = json.encode({
-      "model": "deepseek-chat",
-      "messages": conversationHistoryForAI,
-      "temperature": 0.7
+      "contents": conversationHistoryForAI,
+      "safetySettings": [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+      ],
     });
 
     try {
@@ -352,38 +410,26 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       final data = json.decode(response.body);
 
       if (response.statusCode == 200 &&
-          data['choices'] != null &&
-          data['choices'].isNotEmpty &&
-          data['choices'][0]['message'] != null) {
-        String reply = data['choices'][0]['message']['content'];
+          data['candidates'] != null &&
+          data['candidates'].isNotEmpty &&
+          data['candidates'][0]['content'] != null &&
+          data['candidates'][0]['content']['parts'] != null &&
+          data['candidates'][0]['content']['parts'].isNotEmpty) {
+        String reply = data['candidates'][0]['content']['parts'][0]['text'];
 
-        // --- START OF MODIFIED CODE FOR CHARACTER REPLACEMENT ---
-        // This addresses the "weird wording" like 'â' and '' appearing.
-        // It's common for smart quotes or other special characters to be misinterpreted
-        // if encoding is not perfectly consistent.
-        reply = reply.replaceAll('â', "'"); // Existing fix for 'â'
-        reply = reply.replaceAll('â€œ', '“').replaceAll('â€ ', '”'); // For smart double quotes
-        reply = reply.replaceAll('â€™', '’'); // For smart single quote/apostrophe
-        reply = reply.replaceAll('â€”', '—'); // For em dash
-        reply = reply.replaceAll('â€“', '–'); // For en dash
-        reply = reply.replaceAll('â€¦', '…'); // For ellipsis
+        reply = reply.replaceAll('â', "'");
+        reply = reply.replaceAll('â€œ', '“').replaceAll('â€ ', '”');
+        reply = reply.replaceAll('â€™', '’');
+        reply = reply.replaceAll('â€”', '—');
+        reply = reply.replaceAll('â€“', '–');
+        reply = reply.replaceAll('â€¦', '…');
 
-        reply = reply.replaceAll('Ã©', 'é'); // for accented e
-        reply = reply.replaceAll('Ã¨', 'è'); // for accented e
-        reply = reply.replaceAll('Ã¢', 'â'); // for accented a
-        reply = reply.replaceAll('Ã®', 'î'); // for accented i
+        reply = reply.replaceAll('Ã©', 'é');
+        reply = reply.replaceAll('Ã¨', 'è');
+        reply = reply.replaceAll('Ã¢', 'â');
+        reply = reply.replaceAll('Ã®', 'î');
 
-        reply = reply.replaceAll('â\x80\x99', "'"); // Specific replacement for U+2019 Right Single Quotation Mark if misencoded
-        reply = reply.replaceAll('â\x80\x9C', '“'); // Specific replacement for U+201C Left Double Quotation Mark
-        reply = reply.replaceAll('â\x80\x9D', '”'); // Specific replacement for U+201D Right Double Quotation Mark
-        reply = reply.replaceAll('â\x80\x93', '–'); // Specific replacement for U+2013 En Dash
-        reply = reply.replaceAll('â\x80\x94', '—'); // Specific replacement for U+2014 Em Dash
-        reply = reply.replaceAll('â\x80\xA6', '…'); // Specific replacement for U+2026 Horizontal Ellipsis
-
-        // Replaces the Unicode replacement character itself if it appears.
-        // This specifically targets the '' character.
         reply = reply.replaceAll(RegExp(r'[\uFFFD]'), '');
-        // --- END OF MODIFIED CODE FOR CHARACTER REPLACEMENT ---
 
 
         if (_preferredLanguage != 'English') {
@@ -392,21 +438,34 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
         final assistantMessage = {
           'role': 'assistant',
-          'content': reply, // Store the processed Markdown content
+          'content': reply,
           'timestamp': Timestamp.now(),
         };
         await _saveCurrentMessage(assistantMessage);
 
       } else {
-        final errorMessage = {
+        String errorMessage = 'AI did not return a valid response. Please try again.';
+        if (data['promptFeedback'] != null && data['promptFeedback']['safetyRatings'] != null) {
+          bool blocked = false;
+          for (var rating in data['promptFeedback']['safetyRatings']) {
+            if (rating['blocked'] == true) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) {
+            errorMessage = 'Your input was flagged by safety filters. Please rephrase your question.';
+          }
+        }
+        final errorMessageData = {
           'role': 'assistant',
-          'content': 'AI did not return a response. Please try again.',
+          'content': errorMessage,
           'timestamp': Timestamp.now(),
         };
-        await _saveCurrentMessage(errorMessage);
+        await _saveCurrentMessage(errorMessageData);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AI did not return a response.')),
+            SnackBar(content: Text(errorMessage)),
           );
         }
       }
@@ -430,21 +489,123 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
+  // --- In-Chat Search Functions ---
+
+  void _toggleInChatSearch() {
+    setState(() {
+      _isInChatSearching = !_isInChatSearching;
+      if (!_isInChatSearching) {
+        _inChatSearchController.clear();
+        _inChatSearchQuery = '';
+        _matchingMessageIndices.clear();
+        _currentMatchIndex = -1;
+      } else {
+        // If entering search, trigger a search on current messages if query exists
+        if (_inChatSearchQuery.isNotEmpty) {
+          _onInChatSearchChanged();
+        }
+      }
+    });
+  }
+
+  void _onInChatSearchChanged() {
+    setState(() {
+      _inChatSearchQuery = _inChatSearchController.text;
+      _matchingMessageIndices.clear();
+      _currentMatchIndex = -1; // Reset current match index
+
+      if (_inChatSearchQuery.isNotEmpty) {
+        final lowerCaseQuery = _inChatSearchQuery.toLowerCase();
+        for (int i = 0; i < _messages.length; i++) {
+          final content = _messages[i]['content']?.toLowerCase() ?? '';
+          if (content.contains(lowerCaseQuery)) {
+            _matchingMessageIndices.add(i);
+          }
+        }
+        if (_matchingMessageIndices.isNotEmpty) {
+          _currentMatchIndex = 0; // Set to the first match
+          _scrollToMatch(_currentMatchIndex);
+        }
+      }
+    });
+  }
+
+  void _goToNextMatch() {
+    if (_matchingMessageIndices.isNotEmpty) {
+      setState(() {
+        _currentMatchIndex = (_currentMatchIndex + 1) % _matchingMessageIndices.length;
+        _scrollToMatch(_currentMatchIndex);
+      });
+    }
+  }
+
+  void _goToPreviousMatch() {
+    if (_matchingMessageIndices.isNotEmpty) {
+      setState(() {
+        _currentMatchIndex = (_currentMatchIndex - 1 + _matchingMessageIndices.length) % _matchingMessageIndices.length;
+        _scrollToMatch(_currentMatchIndex);
+      });
+    }
+  }
+
+  void _scrollToMatch(int matchIndexInList) {
+    if (matchIndexInList >= 0 && matchIndexInList < _matchingMessageIndices.length) {
+      final int messageIndex = _matchingMessageIndices[matchIndexInList];
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          // Calculate the scroll offset. This is a simplified approach.
+          // For more accurate scrolling, you might need to use GlobalKey and RenderBox
+          // to get the exact position of the widget.
+          final double itemHeightEstimate = 70.0; // Estimate average message height
+          final double offset = messageIndex * itemHeightEstimate;
+
+          _scrollController.animateTo(
+            offset,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
+
+  // --- Drawer Search Functions ---
+
+  void _onDrawerSearchChanged() {
+    setState(() {
+      _drawerSearchQuery = _drawerSearchController.text;
+    });
+  }
+
   Future<String> _translateText(String text, String language) async {
     if (language.toLowerCase() == 'english') return text;
 
-    final url = Uri.parse('https://api.deepseek.com/v1/chat/completions');
+    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$geminiKey');
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $deepSeekKey',
     };
+
     final body = json.encode({
-      "model": "deepseek-chat",
-      "messages": [
-        {"role": "system", "content": "Translate the following into $language. Just provide the translated text without any additional commentary."},
-        {"role": "user", "content": text},
+      "contents": [
+        {
+          "parts": [
+            {"text": "Translate the following into $language. Just provide the translated text without any additional commentary."},
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {"text": text},
+          ]
+        }
       ],
-      "temperature": 0.3,
+      "safetySettings": [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+      ],
     });
 
     try {
@@ -452,10 +613,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       final data = json.decode(response.body);
 
       if (response.statusCode == 200 &&
-          data['choices'] != null &&
-          data['choices'].isNotEmpty &&
-          data['choices'][0]['message'] != null) {
-        return data['choices'][0]['message']['content']?.trim() ?? text;
+          data['candidates'] != null &&
+          data['candidates'].isNotEmpty &&
+          data['candidates'][0]['content'] != null &&
+          data['candidates'][0]['content']['parts'] != null &&
+          data['candidates'][0]['content']['parts'].isNotEmpty) {
+        return data['candidates'][0]['content']['parts'][0]['text']?.trim() ?? text;
       } else {
         return text;
       }
@@ -478,9 +641,57 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
   }
 
-  Widget _buildMessage(Map<String, dynamic> msg) {
+  void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Message copied to clipboard!'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Widget _buildMessage(Map<String, dynamic> msg, int messageIndex) {
     final isUser = msg['role'] == 'user';
     final timestamp = (msg['timestamp'] as Timestamp?)?.toDate();
+    final content = msg['content'] ?? '';
+
+    // Determine if this message should be highlighted as a search result
+    final bool isSearchMatch = _isInChatSearching &&
+        _inChatSearchQuery.isNotEmpty &&
+        content.toLowerCase().contains(_inChatSearchQuery.toLowerCase());
+
+    final bool isCurrentHighlight = isSearchMatch &&
+        _currentMatchIndex != -1 &&
+        _matchingMessageIndices.isNotEmpty &&
+        _matchingMessageIndices[_currentMatchIndex] == messageIndex;
+
+    // Updated colors for chat bubbles
+    Color? backgroundColor = isUser ? _lightPurple : _white; // User messages light purple, assistant messages white
+    if (isCurrentHighlight) {
+      backgroundColor = Colors.yellow[200]; // Highlight current match
+    } else if (isSearchMatch) {
+      backgroundColor = _mediumPurple.withOpacity(0.3); // Highlight other matches with a purple tint
+    }
+
+    Widget messageContentWidget;
+    if (isUser) {
+      messageContentWidget = Text(
+        content,
+        style: TextStyle(fontSize: 15, height: 1.4, color: _darkPurple), // User text dark purple
+      );
+    } else {
+      messageContentWidget = GestureDetector(
+        onLongPress: () => _copyToClipboard(content),
+        child: MarkdownBody(
+          data: content,
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(fontSize: 15, height: 1.4, color: _greyText), // Assistant text grey
+            listBullet: TextStyle(fontSize: 15, height: 1.4, color: _greyText),
+          ),
+        ),
+      );
+    }
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -489,27 +700,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isUser ? Colors.blue[100] : Colors.grey[300],
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // Use MarkdownBody for assistant messages to render Markdown
-            isUser
-                ? Text(
-              msg['content'] ?? '',
-              style: const TextStyle(fontSize: 15, height: 1.4),
-            )
-                : MarkdownBody(
-              data: msg['content'] ?? '',
-              styleSheet: MarkdownStyleSheet(
-                // You can customize the styles here
-                p: const TextStyle(fontSize: 15, height: 1.4),
-                listBullet: const TextStyle(fontSize: 15, height: 1.4),
-                // Add more styles for headings, bold, etc., if needed
-              ),
-            ),
+            messageContentWidget, // Use the prepared widget
             if (timestamp != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4.0),
@@ -621,17 +818,24 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Travel AI Chat"),
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-            tooltip: 'Open chat history',
+        title: Text(
+          "Travel AI Chat",
+          style: TextStyle(
+            color: _darkPurple, // Consistent app bar title color
+            fontWeight: FontWeight.bold,
           ),
         ),
+        backgroundColor: _white, // Consistent app bar background
+        elevation: 0, // No shadow for app bar
+        iconTheme: IconThemeData(color: _darkPurple), // Back button color
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined, color: Colors.white),
+            icon: Icon(Icons.search, color: _darkPurple), // Toggle in-chat search
+            onPressed: _toggleInChatSearch,
+            tooltip: 'Search Chat',
+          ),
+          IconButton(
+            icon: Icon(Icons.add_comment_outlined, color: _darkPurple),
             onPressed: _isLoading ? null : () => _startNewChat(sendGreeting: true),
             tooltip: 'Start a New Chat',
           ),
@@ -642,13 +846,26 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         child: Column(
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue[700]),
+              decoration: BoxDecoration(color: _darkPurple), // Dark purple for drawer header
               child: const Align(
                 alignment: Alignment.bottomLeft,
                 child: Text(
                   'Your Chat History',
                   style: TextStyle(color: Colors.white, fontSize: 20),
                 ),
+              ),
+            ),
+            // Drawer search bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: TextField(
+                controller: _drawerSearchController,
+                decoration: const InputDecoration(
+                  hintText: 'Search chat history...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _onDrawerSearchChanged(),
               ),
             ),
             Expanded(
@@ -672,7 +889,42 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     return const Center(child: Text('No previous chats.'));
                   }
 
-                  final chatSessions = snapshot.data!.docs;
+                  List<QueryDocumentSnapshot> chatSessions = snapshot.data!.docs;
+
+                  // Filter chat sessions based on _drawerSearchQuery
+                  if (_drawerSearchQuery.isNotEmpty) {
+                    final lowerCaseDrawerQuery = _drawerSearchQuery.toLowerCase();
+                    chatSessions = chatSessions.where((sessionDoc) {
+                      final sessionData = sessionDoc.data() as Map<String, dynamic>;
+                      final List<dynamic> messages = sessionData['messages'] ?? [];
+                      String chatSummary = 'Empty Chat'; // Default summary
+
+                      if (messages.isNotEmpty) {
+                        // Try to find the first non-empty user message for summary
+                        final firstUserMessage = messages.firstWhere(
+                              (msg) => msg['role'] == 'user' && msg['content'] != null && (msg['content'] as String).trim().isNotEmpty,
+                          orElse: () => null,
+                        );
+
+                        if (firstUserMessage != null) {
+                          chatSummary = firstUserMessage['content'] as String;
+                        } else {
+                          // Fallback to first non-empty message overall
+                          final firstActualMessage = messages.firstWhere(
+                                (msg) => msg['content'] != null && (msg['content'] as String).trim().isNotEmpty,
+                            orElse: () => {'content': 'New chat session'},
+                          )['content'] as String;
+                          chatSummary = firstActualMessage;
+                        }
+                      } else if (sessionData['startTime'] is Timestamp) {
+                        final startTime = (sessionData['startTime'] as Timestamp).toDate().toLocal();
+                        chatSummary = 'New chat started on ${startTime.month}/${startTime.day}';
+                      }
+
+                      return chatSummary.toLowerCase().contains(lowerCaseDrawerQuery);
+                    }).toList();
+                  }
+
                   final now = DateTime.now();
 
                   final Map<String, List<QueryDocumentSnapshot>> groupedSessions = {
@@ -725,7 +977,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
                       if (category == 'Older Chats') {
                         final sortedMonthYearKeys = olderChatsByMonth.keys.toList()
-                          ..sort((a, b) => b.compareTo(a)); // Sort by most recent month/year first
+                          ..sort((a, b) => b.compareTo(a));
                         for (final monthYearKey in sortedMonthYearKeys) {
                           drawerItems.add(
                             Padding(
@@ -766,49 +1018,132 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(8),
-              itemCount: _messages.length,
-              itemBuilder: (_, i) => _buildMessage(_messages[i]),
-            ),
+      body: Container( // Wrap body with Container for gradient
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFF3E5F5), // Light violet
+              Color(0xFFFFF5E6), // Light beige
+            ],
           ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: TypingIndicator(), // Use your new TypingIndicator widget
+        ),
+        child: Column(
+          children: [
+            if (_isInChatSearching)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _inChatSearchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search in chat...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                        ),
+                        style: const TextStyle(fontSize: 16),
+                        onChanged: (_) => _onInChatSearchChanged(),
+                      ),
+                    ),
+                    if (_inChatSearchQuery.isNotEmpty && _matchingMessageIndices.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          '${_currentMatchIndex + 1} of ${_matchingMessageIndices.length}',
+                          style: const TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_arrow_up),
+                      onPressed: _matchingMessageIndices.isNotEmpty ? _goToPreviousMatch : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                      onPressed: _matchingMessageIndices.isNotEmpty ? _goToNextMatch : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: _toggleInChatSearch, // Closes the search bar
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(8),
+                itemCount: _messages.length,
+                itemBuilder: (_, i) => _buildMessage(_messages[i], i), // Pass message index for highlighting
+              ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                    decoration: const InputDecoration(
-                      hintText: 'Ask about flights, places, visas...',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: TypingIndicator(),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                      decoration: InputDecoration( // Apply theme to input field
+                        hintText: 'Ask about flights, places, visas...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _mediumPurple.withOpacity(0.4),
+                            width: 1.5,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _mediumPurple.withOpacity(0.4),
+                            width: 1.5,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _darkPurple,
+                            width: 2.0,
+                          ),
+                        ),
+                        fillColor: _lightBeige.withOpacity(0.6),
+                        filled: true,
+                        hintStyle: TextStyle(
+                          color: _greyText.withOpacity(0.6),
+                        ),
+                      ),
+                      style: TextStyle(
+                        color: _darkPurple,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _isLoading ? null : _sendMessage,
-                  color: Colors.blueAccent,
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: _isLoading ? null : _sendMessage,
+                    color: _darkPurple, // Consistent button color
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 2),
     );
   }
 }

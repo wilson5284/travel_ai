@@ -5,7 +5,6 @@ import 'package:travel_ai/screens/my_reports_list_screen.dart';
 import 'package:travel_ai/screens/splash_screen.dart';
 import 'firebase_options.dart';
 import 'admin/admin_announcement_list_screen.dart';
-import 'admin/report_management_screen.dart';
 import 'admin/user_management_screen.dart';
 import 'screens/user_management/login_screen.dart';
 import 'screens/report_screen.dart';
@@ -30,7 +29,6 @@ class MyApp extends StatelessWidget {
         '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
         '/report': (context) => const ReportScreen(),
-        '/admin/reports': (context) => const ReportManagementScreen(),
         '/admin/users': (context) => const UserManagementScreen(),
         '/announcements': (context) => const AllAnnouncementsScreen(),
         '/admin/announcements/manage': (context) => const AdminAnnouncementListScreen(),

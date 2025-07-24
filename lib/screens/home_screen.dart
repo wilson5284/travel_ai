@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'dynamic_itinerary/itinerary_screen.dart';
+import 'insurance_suggestion_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -131,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     // Make sure you replace 'YOUR_EXCHANGERATE_API_KEY' with your actual key
-    const String apiKey = 'YOUR_EXCHANGERATE_API_KEY';
+    const String apiKey = 'fb86156312e869b5e58cc332';
     final url = Uri.parse(
       'https://v6.exchangerate-api.com/v6/$apiKey/pair/$_baseCurrency/$_targetCurrency/$amount',
     );
@@ -596,6 +597,68 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 24), // Ensure bottom padding
+
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const InsuranceSuggestionScreen()),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)], // Darker purple to pinkish-purple
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.2),
+                              spreadRadius: 2,
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Travel Insurance Advisor',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: _white,
+                                  ),
+                                ),
+                                Icon(Icons.shield_moon_outlined, color: _white, size: 36),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Get general suggestions for travel insurance based on your trip details.',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: _offWhite,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: Icon(Icons.arrow_forward_ios, color: _offWhite, size: 24),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
