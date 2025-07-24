@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/bottom_nav_bar.dart'; // You need to create this file
+import '../widgets/bottom_nav_bar.dart';
+import 'insurance_suggestion_screen.dart'; // You need to create this file
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -249,6 +250,52 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             const SizedBox(height: 30),
+
+            // <--- NEW INSURANCE ADVISOR SECTION START --->
+            Card(
+              color: Colors.grey[850], // Consistent card styling
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Travel Insurance Advisor 🛡️',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Get general suggestions for travel insurance based on your trip details.',
+                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const InsuranceSuggestionScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.security, color: Colors.white),
+                        label: const Text('Get Insurance Advice', style: TextStyle(color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC86FAE), // Match your theme
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 30), // Spacing below the new section
 
           ],
         ),
