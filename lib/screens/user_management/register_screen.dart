@@ -1,7 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
-import '../../../db/user_service.dart';
-import '../../../model/user_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../db/user_service.dart';
+import '../../model/user_model.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -25,22 +26,103 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _gender = 'Male';
   bool _isLoading = false;
 
-  // Validation methods (keep your existing ones)
-  String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Username is required';
-    if (value.trim().length < 3) return 'At least 3 characters';
-    return null;
+  // Helper function to show a SnackBar message
+  void _showSnackBar(String message, {Color? backgroundColor}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor ?? Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Email is required';
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-      return 'Enter a valid email';
+  // Validation methods
+  String? _validateUsername(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Username is required.';
+    }
+    if (value.trim().length < 3) {
+      return 'Username must be at least 3 characters long.';
+    }
+    // Regex to ensure no numbers or symbols
+    if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value.trim())) {
+      return 'Username can only contain letters and spaces.';
     }
     return null;
   }
 
-  // [Keep all other validation methods]
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email is required.';
+    }
+    // More robust regex for email validation
+    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(value.trim())) {
+      return 'Please enter a valid email format (e.g., example@domain.com).';
+    }
+    return null;
+  }
+
+  String? _validateCountry(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Country is required.';
+    }
+    // Regex to ensure no numbers or symbols
+    if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value.trim())) {
+      return 'Country can only contain letters and spaces.';
+    }
+    return null;
+  }
+
+  String? _validatePhoneNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required.';
+    }
+    // Regex to ensure only digits
+    if (!RegExp(r'^[0-9]+$').hasMatch(value.trim())) {
+      return 'Phone number can only contain digits.';
+    }
+    if (value.trim().length < 7) {
+      return 'Phone number must be at least 7 digits long.';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Password is required.';
+    }
+    if (value.length < 5) {
+      return 'Password must be at least 5 characters long.';
+    }
+    if (!value.contains(RegExp(r'[A-Z]'))) {
+      return 'Password must contain at least one uppercase letter.';
+    }
+    if (!value.contains(RegExp(r'[a-z]'))) {
+      return 'Password must contain at least one lowercase letter.';
+    }
+    if (!value.contains(RegExp(r'[0-9]'))) {
+      return 'Password must contain at least one number.';
+    }
+    if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+      return 'Password must contain at least one symbol (!@#\$%^&*(),.?":{}|<>).';
+    }
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please confirm your password.';
+    }
+    if (value != _passwordController.text) {
+      return 'Passwords do not match.';
+    }
+    return null;
+  }
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -57,11 +139,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_passwordController.text != _rePasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Passwords don't match!")),
-      );
+    if (!_formKey.currentState!.validate()) {
+      _showSnackBar('Please correct the errors in the form.');
       return;
     }
 
@@ -90,24 +169,102 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       await UserService().addUser(newUser, cred.user!.uid);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registration successful!')),
-      );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      if (context.mounted) {
+        _showSnackBar('Registration successful!', backgroundColor: Colors.green.shade700);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     } on fbAuth.FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.message ?? 'Unknown error'}')),
-      );
+      String errorMessage;
+      switch (e.code) {
+        case 'email-already-in-use':
+          errorMessage = 'The email address is already in use by another account.';
+          break;
+        case 'weak-password':
+          errorMessage = 'The password provided is too weak. Please choose a stronger password.';
+          break;
+        case 'invalid-email':
+          errorMessage = 'The email address is not valid.';
+          break;
+        default:
+          errorMessage = 'Registration failed: ${e.message ?? 'An unknown error occurred.'}';
+      }
+      _showSnackBar(errorMessage);
+    } catch (e) {
+      _showSnackBar('An unexpected error occurred. Please try again.');
+      print('Registration error: $e'); // Log the error for debugging
     } finally {
-      setState(() => _isLoading = false);
+      if (context.mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Define color scheme consistent with other screens
+    final Color darkPurple = const Color(0xFF6A1B9A);
+    final Color mediumPurple = const Color(0xFF9C27B0);
+    final Color lightPurple = const Color(0xFFF3E5F5);
+    final Color lightBeige = const Color(0xFFFFF5E6);
+    final Color white = Colors.white;
+    final Color greyText = Colors.grey.shade600;
+
+    // Helper for InputDecoration consistent styling
+    InputDecoration _buildInputDecoration(String labelText, IconData icon) {
+      return InputDecoration(
+        labelText: labelText,
+        labelStyle: TextStyle(color: darkPurple.withOpacity(0.8)),
+        prefixIcon: Icon(icon, color: mediumPurple),
+        filled: true,
+        fillColor: lightBeige.withOpacity(0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: mediumPurple.withOpacity(0.4),
+            width: 1.5,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: mediumPurple.withOpacity(0.4),
+            width: 1.5,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: darkPurple,
+            width: 2.0,
+          ),
+        ),
+        errorBorder: OutlineInputBorder( // Style for error state
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 2.0,
+          ),
+        ),
+        focusedErrorBorder: OutlineInputBorder( // Style for focused error state
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 2.0,
+          ),
+        ),
+        // FIX: Ensure error text can wrap and is readable
+        errorStyle: const TextStyle(
+          color: Colors.red,
+          fontSize: 12, // Slightly smaller font size for more content
+          height: 1.2, // Adjust line height for better spacing
+        ),
+        helperMaxLines: 3, // Allow helper text to wrap up to 3 lines (though not used for errors here, good for general input)
+      );
+    }
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -134,16 +291,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.deepPurple.withOpacity(0.1),
+                        color: darkPurple.withOpacity(0.1),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
                     ],
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.airplanemode_active,
                     size: 60,
-                    color: Color(0xFF6A1B9A),
+                    color: darkPurple,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -152,14 +309,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple.shade800,
+                    color: darkPurple,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Create your account to begin exploring',
                   style: TextStyle(
-                    color: Colors.deepPurple.shade600,
+                    color: greyText,
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -170,7 +327,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  color: Colors.white.withOpacity(0.8),
+                  color: white.withOpacity(0.8),
                   child: Padding(
                     padding: const EdgeInsets.all(24.0),
                     child: Form(
@@ -180,27 +337,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           // Username
                           TextFormField(
                             controller: _usernameController,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.person_outline, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
+                            decoration: _buildInputDecoration('Username', Icons.person_outline),
                             validator: _validateUsername,
                           ),
                           const SizedBox(height: 16),
@@ -209,27 +346,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.mail_outline, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
+                            decoration: _buildInputDecoration('Email', Icons.mail_outline),
                             validator: _validateEmail,
                           ),
                           const SizedBox(height: 16),
@@ -237,31 +354,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           // Country
                           TextFormField(
                             controller: _countryController,
-                            decoration: InputDecoration(
-                              labelText: 'Country',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.location_on_outlined, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) return 'Country is required';
-                              return null;
-                            },
+                            decoration: _buildInputDecoration('Country', Icons.location_on_outlined),
+                            validator: _validateCountry,
                           ),
                           const SizedBox(height: 16),
 
@@ -269,34 +363,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
-                            decoration: InputDecoration(
-                              labelText: 'Phone Number',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.phone_outlined, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) return 'Phone is required';
-                              if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
-                                return 'Numbers only';
-                              }
-                              return null;
-                            },
+                            decoration: _buildInputDecoration('Phone Number', Icons.phone_outlined),
+                            validator: _validatePhoneNumber,
                           ),
                           const SizedBox(height: 16),
 
@@ -308,34 +376,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               value: gender,
                               child: Text(
                                 gender,
-                                style: TextStyle(color: Colors.deepPurple.shade800),
+                                style: TextStyle(color: darkPurple),
                               ),
                             ))
                                 .toList(),
                             onChanged: (val) => setState(() => _gender = val!),
-                            decoration: InputDecoration(
-                              labelText: 'Gender',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.person_outline, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            validator: (value) => value == null ? 'Please select gender' : null,
-                            dropdownColor: Colors.white,
+                            decoration: _buildInputDecoration('Gender', Icons.person_outline),
+                            validator: (value) => value == null ? 'Please select your gender.' : null,
+                            dropdownColor: white,
+                            style: TextStyle(color: darkPurple, fontSize: 16), // Text style for selected value
+                            iconEnabledColor: mediumPurple, // Dropdown arrow color
                           ),
                           const SizedBox(height: 16),
 
@@ -343,32 +393,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _dobController,
                             readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Date of Birth',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.calendar_today_outlined, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
+                            decoration: _buildInputDecoration('Date of Birth', Icons.calendar_today_outlined).copyWith(
                               suffixIcon: IconButton(
-                                icon: Icon(Icons.calendar_month, color: Colors.deepPurple.shade400),
+                                icon: Icon(Icons.calendar_month, color: mediumPurple),
                                 onPressed: () => _selectDate(context),
                               ),
                             ),
-                            validator: (value) => value == null || value.isEmpty ? 'Please select DOB' : null,
+                            validator: (value) => value == null || value.isEmpty ? 'Please select your date of birth.' : null,
                             onTap: () => _selectDate(context),
                           ),
                           const SizedBox(height: 16),
@@ -381,33 +412,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               value: lang,
                               child: Text(
                                 lang,
-                                style: TextStyle(color: Colors.deepPurple.shade800),
+                                style: TextStyle(color: darkPurple),
                               ),
                             ))
                                 .toList(),
                             onChanged: (val) => setState(() => _preferredLanguage = val!),
-                            decoration: InputDecoration(
-                              labelText: 'Preferred Language',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.language_outlined, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            dropdownColor: Colors.white,
+                            decoration: _buildInputDecoration('Preferred Language', Icons.language_outlined),
+                            dropdownColor: white,
+                            style: TextStyle(color: darkPurple, fontSize: 16),
+                            iconEnabledColor: mediumPurple,
                           ),
                           const SizedBox(height: 16),
 
@@ -419,33 +432,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               value: cur,
                               child: Text(
                                 cur,
-                                style: TextStyle(color: Colors.deepPurple.shade800),
+                                style: TextStyle(color: darkPurple),
                               ),
                             ))
                                 .toList(),
                             onChanged: (val) => setState(() => _preferredCurrency = val!),
-                            decoration: InputDecoration(
-                              labelText: 'Preferred Currency',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.attach_money_outlined, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            dropdownColor: Colors.white,
+                            decoration: _buildInputDecoration('Preferred Currency', Icons.attach_money_outlined),
+                            dropdownColor: white,
+                            style: TextStyle(color: darkPurple, fontSize: 16),
+                            iconEnabledColor: mediumPurple,
                           ),
                           const SizedBox(height: 16),
 
@@ -453,32 +448,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: true,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.lock_outline, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) return 'Password is required';
-                              if (value.length < 6) return 'Minimum 6 characters';
-                              return null;
-                            },
+                            decoration: _buildInputDecoration('Password', Icons.lock_outline),
+                            validator: _validatePassword,
                           ),
                           const SizedBox(height: 16),
 
@@ -486,32 +457,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _rePasswordController,
                             obscureText: true,
-                            decoration: InputDecoration(
-                              labelText: 'Confirm Password',
-                              labelStyle: TextStyle(color: Colors.deepPurple.shade600),
-                              prefixIcon: Icon(Icons.lock_outline, color: Colors.deepPurple.shade400),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade200,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.deepPurple.shade400,
-                                  width: 2.0,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) return 'Please confirm password';
-                              if (value != _passwordController.text) return 'Passwords do not match';
-                              return null;
-                            },
+                            decoration: _buildInputDecoration('Confirm Password', Icons.lock_outline),
+                            validator: _validateConfirmPassword,
                           ),
                           const SizedBox(height: 30),
 
@@ -521,14 +468,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _register,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF6A1B9A),
-                                foregroundColor: Colors.white,
+                                backgroundColor: darkPurple,
+                                foregroundColor: white,
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 elevation: 3,
-                                shadowColor: Colors.deepPurple.withOpacity(0.3),
+                                shadowColor: darkPurple.withOpacity(0.3),
                               ),
                               child: _isLoading
                                   ? const SizedBox(
@@ -556,7 +503,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             children: [
                               Text(
                                 "Already have an account? ",
-                                style: TextStyle(color: Colors.deepPurple.shade600),
+                                style: TextStyle(color: greyText),
                               ),
                               TextButton(
                                 onPressed: () => Navigator.pushReplacement(
@@ -566,7 +513,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 child: Text(
                                   'Sign In',
                                   style: TextStyle(
-                                    color: Colors.deepPurple.shade800,
+                                    color: darkPurple,
                                     fontWeight: FontWeight.bold,
                                     decoration: TextDecoration.underline,
                                   ),

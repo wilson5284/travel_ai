@@ -21,6 +21,17 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
+  bool _isValidEmail(String email) {
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    return emailRegex.hasMatch(email);
+  }
+
+  bool _isValidPassword(String password) {
+    final passwordRegex = RegExp(
+        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$%^&*(),.?":{}|<>]).{6,}$');
+    return passwordRegex.hasMatch(password);
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -41,6 +52,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       _showError('Please fill in all fields');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    if (!_isValidEmail(email)) {
+      _showError('Please enter a valid email address');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    if (!_isValidPassword(password)) {
+      _showError('Password must contain at least:\n- 1 uppercase letter\n- 1 lowercase letter\n- 1 digit\n- 1 special symbol');
       setState(() => _isLoading = false);
       return;
     }
