@@ -26,10 +26,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -59,4 +56,14 @@ class DefaultFirebaseOptions {
     projectId: 'travelai-39572',
     storageBucket: 'travelai-39572.firebasestorage.app',
   );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyB91ntJmVWFxQvfXF35DZVcEHwdUJUKFF0',
+    appId: '1:680526943834:ios:3e43d74d150bbe2e5d6a63',
+    messagingSenderId: '680526943834',
+    projectId: 'travelai-39572',
+    storageBucket: 'travelai-39572.firebasestorage.app',
+    iosBundleId: 'com.example.travelAi',
+  );
+
 }

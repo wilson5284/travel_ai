@@ -60,29 +60,19 @@ class WeatherService {
 
   // Gets the weather description for a specific date (approximate)
   // This is a simplified lookup for a date range, as OpenWeatherMap provides 3-hour forecasts.
-  String getWeatherDescriptionForDateRange(Map<String, dynamic> weatherData, DateTime startDate, DateTime endDate) {
-    if (weatherData.containsKey('error')) {
-      return "Weather info unavailable.";
-    }
+  String? getWeatherForDate(Map<String, dynamic> weatherData, String dateStr) {
+    if (weatherData.containsKey('error')) return null;
 
-    final List<dynamic> forecasts = weatherData['list'];
-    final List<String> conditions = [];
-    final DateFormat formatter = DateFormat('yyyy-MM-dd'); // Correct usage with import
-
+    final List forecasts = weatherData['list'];
     for (var forecast in forecasts) {
-      final DateTime forecastTime = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000, isUtc: true).toLocal();
-      // Check if forecast falls within the trip dates
-      if (forecastTime.isAfter(startDate.subtract(Duration(days: 1))) && forecastTime.isBefore(endDate.add(Duration(days: 1)))) {
-        final String main = forecast['weather'][0]['main'];
-        final String description = forecast['weather'][0]['description'];
-        conditions.add("$main ($description)");
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000).toLocal();
+      final String forecastDate = DateFormat('yyyy-MM-dd').format(dateTime);
+      if (forecastDate == dateStr) {
+        final description = forecast['weather'][0]['description'];
+        final temp = forecast['main']['temp'];
+        return "$description, ${temp.toStringAsFixed(1)}°C";
       }
     }
-    if (conditions.isEmpty) {
-      return "No weather data for selected dates.";
-    }
-    // Remove duplicates and combine
-    final uniqueConditions = conditions.toSet().join(', ');
-    return "Expected weather: $uniqueConditions";
+    return null;
   }
 }

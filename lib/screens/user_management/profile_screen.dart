@@ -27,7 +27,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
   final Color _lightPurple = const Color(0xFFF3E5F5);
-  final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _greyText = Colors.grey.shade600;
   final Color _gradientStart = const Color(0xFFF3E5F5);
   final Color _gradientEnd = const Color(0xFFFFF5E6);
@@ -375,26 +374,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
               ),
 
-              // Other Features/Actions
               _buildProfileItem(
                 context,
-                title: 'My Saved Places',
-                icon: Icons.bookmark,
-                iconColor: Colors.orangeAccent, // Distinct color
+                title: 'FAQ',
+                icon: Icons.question_mark_sharp,
+                iconColor: Colors.red, // Distinct color
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('My Saved Places not implemented.', style: TextStyle(color: _white)), backgroundColor: _mediumPurple),
-                  );
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'Travel History',
-                icon: Icons.history,
-                iconColor: Colors.teal, // Distinct color
-                onTap: () {
-                  // Assuming you have a route to your history screen
-                  Navigator.pushNamed(context, '/history');
+                  Navigator.pushNamed(context, '/faq');
                 },
               ),
               _buildProfileItem(

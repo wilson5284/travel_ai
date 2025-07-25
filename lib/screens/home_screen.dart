@@ -6,8 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/bottom_nav_bar.dart';
-import 'dynamic_itinerary/itinerary_screen.dart';
-import 'insurance_suggestion_screen.dart';
+import 'dynamic_itinerary/itinerary_screen.dart'; // Assuming this path
+import 'insurance_suggestion_screen.dart'; // Assuming this path
+import 'emergency_screen.dart'; // <--- Corrected import path for EmergencyScreen
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,8 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Color scheme
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
-  final Color _darkerOffWhite = const Color(0xFFEBEBEB);
-  final Color _violet = const Color(0xFF6A1B9A);
+  final Color _violet = const Color(0xFF6A1B9A); // A specific violet shade for emphasis
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
@@ -44,20 +44,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadUserCurrency() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final preferredCurrency = doc.data()?['preferredCurrency'] ?? 'USD';
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final preferredCurrency = doc.data()?['preferredCurrency'] ?? 'USD';
 
-      final validPreferred = _currencies.contains(preferredCurrency) ? preferredCurrency : 'USD';
+        final validPreferred = _currencies.contains(preferredCurrency) ? preferredCurrency : 'USD';
 
-      String defaultTarget = _currencies.firstWhere(
-            (c) => c != validPreferred,
-        orElse: () => validPreferred == 'USD' ? 'MYR' : 'USD',
-      );
+        String defaultTarget = _currencies.firstWhere(
+              (c) => c != validPreferred,
+          orElse: () => validPreferred == 'USD' ? 'MYR' : 'USD',
+        );
 
-      setState(() {
-        _baseCurrency = validPreferred;
-        _targetCurrency = defaultTarget;
-      });
+        setState(() {
+          _baseCurrency = validPreferred;
+          _targetCurrency = defaultTarget;
+        });
+      } catch (e) {
+        print("Error loading user currency from Firestore: $e");
+        setState(() {
+          _baseCurrency = 'USD'; // Fallback
+          _targetCurrency = 'MYR'; // Fallback
+        });
+        _showSnackBar('Failed to load preferred currency. Using defaults.', backgroundColor: Colors.orange);
+      }
     } else {
       setState(() {
         _baseCurrency = 'USD';
@@ -83,21 +92,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final historyRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('conversion_history');
+    try {
+      final historyRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('conversion_history');
 
-    await historyRef.add({
-      'timestamp': Timestamp.now(),
-      'baseCurrency': _baseCurrency,
-      'targetCurrency': _targetCurrency,
-      'amount': amount,
-      'result': result,
-    });
+      await historyRef.add({
+        'timestamp': Timestamp.now(),
+        'baseCurrency': _baseCurrency,
+        'targetCurrency': _targetCurrency,
+        'amount': amount,
+        'result': result,
+      });
+    } catch (e) {
+      print("Error saving conversion to Firestore: $e");
+      _showSnackBar('Failed to save conversion history.', backgroundColor: Colors.red);
+    }
   }
 
   void _showSnackBar(String message, {Color? backgroundColor}) {
+    // Ensure context is still valid before showing SnackBar
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -128,10 +144,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      _convertedAmount = null;
+      _convertedAmount = null; // Clear previous result during conversion
     });
 
     // Make sure you replace 'YOUR_EXCHANGERATE_API_KEY' with your actual key
+    // Using your provided key directly now:
     const String apiKey = 'fb86156312e869b5e58cc332';
     final url = Uri.parse(
       'https://v6.exchangerate-api.com/v6/$apiKey/pair/$_baseCurrency/$_targetCurrency/$amount',
@@ -168,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final temp = _baseCurrency!;
         _baseCurrency = _targetCurrency;
         _targetCurrency = temp;
-        _convertedAmount = null;
+        _convertedAmount = null; // Clear result after swap
       });
     }
   }
@@ -449,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 16,
                             ),
                             onChanged: (value) {
-                              setState(() {});
+                              setState(() {}); // Trigger rebuild to update UI if needed
                             },
                           ),
                           const SizedBox(height: 24),
@@ -596,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24), // Ensure bottom padding
+                    const SizedBox(height: 24),
 
                     GestureDetector(
                       onTap: () {
@@ -658,7 +675,71 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 24), // Add spacing after Insurance button
+
+                    // --- NEW: Emergency Services Button ---
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const EmergencyScreen()),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          // Using a red gradient to visually signify 'emergency'
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFEF5350), Color(0xFFC62828)], // Red gradient
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.2), // Red shadow
+                              spreadRadius: 2,
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Emergency Services',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: _white,
+                                  ),
+                                ),
+                                Icon(Icons.warning_amber_rounded, color: _white, size: 36), // Warning icon
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Find local emergency contacts and important information.',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: _offWhite,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: Icon(Icons.arrow_forward_ios, color: _offWhite, size: 24),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24), // Final bottom padding
                   ],
                 ),
               ),

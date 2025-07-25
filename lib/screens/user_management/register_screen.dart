@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../db/user_service.dart';
 import '../../model/user_model.dart';
 import 'login_screen.dart';
@@ -207,7 +206,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // Define color scheme consistent with other screens
     final Color darkPurple = const Color(0xFF6A1B9A);
     final Color mediumPurple = const Color(0xFF9C27B0);
-    final Color lightPurple = const Color(0xFFF3E5F5);
     final Color lightBeige = const Color(0xFFFFF5E6);
     final Color white = Colors.white;
     final Color greyText = Colors.grey.shade600;

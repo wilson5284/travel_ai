@@ -31,12 +31,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  Future<void> _signOut(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {

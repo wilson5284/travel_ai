@@ -12,6 +12,7 @@ class FirestoreService {
   Future<String> saveItinerary(Map<String, dynamic> itineraryData) async { // Change return type to String
     try {
       DocumentReference docRef = await _firestore.collection('itineraries').add({
+        'userId': itineraryData['userId'],
         'location': itineraryData['location'],
         'departDay': itineraryData['departDay'],
         'returnDay': itineraryData['returnDay'],

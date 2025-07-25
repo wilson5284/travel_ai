@@ -7,6 +7,7 @@ import 'package:open_filex/open_filex.dart';
 import '../../services/firestore_service.dart';
 import '../../../utils/pdf_export.dart';
 import 'modify_trip_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ViewItineraryDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tripDetails; // This will include the 'id' for Firestore operations
@@ -36,7 +37,6 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
   final Color _lightPurple = const Color(0xFFF3E5F5);
-  final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _greyText = Colors.grey.shade600;
   final Color _gradientStart = const Color(0xFFF3E5F5); // Light violet
   final Color _gradientEnd = const Color(0xFFFFF5E6); // Light beige
@@ -49,6 +49,38 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
     _currentItinerary = List<Map<String, dynamic>>.from(_currentTripDetails['itinerary']);
     _currentSuggestions = List<String>.from(_currentTripDetails['suggestions']);
   }
+
+  // --- Start of corrected _launchMap function ---
+  Future<void> _launchMap(String placeName) async {
+    // 1. Encode the placeName to handle spaces and special characters
+    final encodedPlaceName = Uri.encodeComponent(placeName);
+
+    // 2. Construct the Google Maps URL with the 'q' (query) parameter
+    // This URL tells Google Maps to perform a search for the encoded place name.
+    final String googleMapsUrl = 'http://googleusercontent.com/maps.google.com/search/?api=1&query=$encodedPlaceName';
+
+    try {
+      // Attempt to launch the URL.
+      // LaunchMode.externalApplication tries to open it in the native app (e.g., Google Maps app).
+      if (await canLaunchUrl(Uri.parse(googleMapsUrl))) {
+        await launchUrl(Uri.parse(googleMapsUrl), mode: LaunchMode.externalApplication);
+      } else {
+        // Fallback: If the native app cannot be launched, open in the default browser.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open map app, opening in browser for $placeName')),
+        );
+        await launchUrl(Uri.parse(googleMapsUrl), mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      // Catch any errors that occur during the launching process
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to open map for $placeName: $e')),
+      );
+      print('Error launching map for $placeName: $e'); // Log the error for debugging
+    }
+  }
+  // --- End of corrected _launchMap function ---
+
 
   // Helper to group flat itinerary list by day
   Map<String, List<Map<String, dynamic>>> _groupItineraryByDay(List<Map<String, dynamic>> itinerary) {
@@ -63,7 +95,7 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
       final String sortKey = timeStr.contains('morning') ? 'a' :
       timeStr.contains('afternoon') ? 'b' :
       timeStr.contains('evening') ? 'c' :
-      timeStr.substring(0,2) ; // For 9:00 AM etc.
+      timeStr.length >= 2 ? timeStr.substring(0,2) : timeStr; // For "9:00 AM" etc.
 
       grouped[dayKey]!.add({...item, '_sortKey': sortKey}); // Add a temporary sort key
     }
@@ -88,6 +120,8 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
     return sortedGrouped;
   }
 
+  // This function was not used in the original build method, but it was present.
+  // It provides local deletion of a day, which needs to be explicitly saved if desired.
   void _deleteItineraryDayLocally(int dayIndex) {
     setState(() {
       _currentItinerary.removeWhere((item) {
@@ -197,7 +231,7 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
         _currentTripDetails['location'] as String,
         _currentTripDetails['departDay'] as String,
         _currentTripDetails['returnDay'] as String,
-        _currentTripDetails['budget'] as double,
+        (_currentTripDetails['budget'] as num).toDouble(), // Ensure budget is a double
         _currentItinerary,
         _currentSuggestions,
       );
@@ -588,6 +622,13 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
                                   "💲 Cost: RM ${item['estimated_cost']}",
                                   style: TextStyle(fontSize: 14, color: _greyText),
                                 ),
+                                TextButton(
+                                  onPressed: () => _launchMap(item['place']),
+                                  child: Text(
+                                    'View on Map',
+                                    style: TextStyle(color: _mediumPurple, fontSize: 14),
+                                  ),
+                                ),
                                 const Divider(color: Colors.grey, thickness: 0.2, height: 20), // Separator
                               ],
                             ),
@@ -631,28 +672,30 @@ class _ViewItineraryDetailScreenState extends State<ViewItineraryDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        ..._currentSuggestions.map((suggestion) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8), // Padding between suggestions
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.lightbulb_outline, color: _mediumPurple, size: 20), // Lightbulb icon
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  suggestion,
-                                  style: TextStyle(fontSize: 15, color: _greyText, height: 1.4), // Adjusted line height
-                                ),
+                        ..._currentSuggestions.map((suggestion) =>
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.lightbulb_outline, color: _mediumPurple, size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      suggestion,
+                                      style: TextStyle(fontSize: 15, color: _greyText),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        )),
+                            ),
+                        ).toList(),
                       ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 24), // Add space at the bottom
+              const SizedBox(height: 40), // More space at the bottom
             ],
           ),
         ),

@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:travel_ai/screens/all_announcements_screen.dart';
 import 'package:travel_ai/screens/my_reports_list_screen.dart';
 import 'package:travel_ai/screens/splash_screen.dart';
-import 'firebase_options.dart';
+import 'package:travel_ai/screens/user_management/faq_screen.dart';
 import 'admin/admin_announcement_list_screen.dart';
 import 'admin/user_management_screen.dart';
 import 'screens/user_management/login_screen.dart';
@@ -33,6 +33,7 @@ class MyApp extends StatelessWidget {
         '/announcements': (context) => const AllAnnouncementsScreen(),
         '/admin/announcements/manage': (context) => const AdminAnnouncementListScreen(),
         '/report/list': (context) => const MyReportsListScreen(),
+        '/faq': (context) => const FAQScreen(),
       },
     );
   }

@@ -1,14 +1,14 @@
 // lib/screens/itinerary_screen.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../services/gemini_service.dart';
 import '../../services/weather_service.dart';
-import '../../services/firestore_service.dart'; // Import FirestoreService
+import '../../services/firestore_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
-import 'history_screen.dart'; // Ensure HistoryScreen is imported
-import 'view_itinerary_detail_screen.dart'; // Ensure ViewItineraryDetailScreen is imported
+import 'history_screen.dart';
+import 'view_itinerary_detail_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
   const ItineraryScreen({super.key});
@@ -18,29 +18,24 @@ class ItineraryScreen extends StatefulWidget {
 }
 
 class _ItineraryScreen extends State<ItineraryScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+  final WeatherService _weatherService = WeatherService();
+
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
-
   DateTime? _departDay;
   DateTime? _returnDay;
   TimeOfDay? _departTime;
   TimeOfDay? _returnTime;
-
   bool isLoading = false;
-  bool isFormVisible = false; // Add this back to control form visibility
-
-  final WeatherService _weatherService = WeatherService();
-  final FirestoreService _firestoreService = FirestoreService(); // Initialize Firestore service
+  bool isFormVisible = false;
 
   // Color scheme (copied from home_screen for consistency)
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
-  final Color _darkerOffWhite = const Color(0xFFEBEBEB);
-  final Color _violet = const Color(0xFF6A1B9A);
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
-  final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _greyText = Colors.grey.shade600;
 
 
@@ -57,7 +52,6 @@ class _ItineraryScreen extends State<ItineraryScreen> {
   @override
   void initState() {
     super.initState();
-    // Default to form not visible, user clicks button to reveal
     isFormVisible = false;
   }
 
@@ -166,145 +160,85 @@ class _ItineraryScreen extends State<ItineraryScreen> {
 
   void _generateItinerary() async {
     if (!_isFormFilled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please fill in all fields correctly.', style: TextStyle(color: _white)),
-          backgroundColor: _mediumPurple,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Please fill in all fields correctly.', style: TextStyle(color: _white)),
+        backgroundColor: _mediumPurple,
+      ));
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     final String location = _locationController.text;
     final DateTime departDay = _departDay!;
     final DateTime returnDay = _returnDay!;
+    final int totalDays = returnDay.difference(departDay).inDays + 1;
 
-    // Weather Check
-    try {
-      final weatherData = await _weatherService.getWeatherForecast(location);
-      if (weatherData.containsKey('error')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Weather check encountered an error: ${weatherData['error']}. Proceeding with itinerary generation.', style: TextStyle(color: _white)),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-        _showWeatherReminderDialog(location, "Weather data could not be fetched due to an error. Proceeding with itinerary generation. Please verify weather conditions independently.");
-      } else {
-        if (_weatherService.hasBadWeather(weatherData)) {
-          final weatherDescription = _weatherService.getWeatherDescriptionForDateRange(weatherData, departDay, returnDay);
-          _showWeatherReminderDialog(location, "Warning: Bad weather conditions expected during your trip ($weatherDescription). Consider adjusting your plans.");
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Good weather expected for your trip to $location!', style: TextStyle(color: _white)),
-              backgroundColor: _mediumPurple,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to check weather due to a network error: $e. Proceeding with itinerary generation.', style: TextStyle(color: _white)),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      _showWeatherReminderDialog(location, "Weather data could not be fetched due to a network error. Proceeding with itinerary generation. Please verify weather conditions independently.");
-    }
-
-    final DateFormat dateFormatter = DateFormat('yyyy-MM-dd');
-
-    final String departDayStr = dateFormatter.format(departDay);
-    final String returnDayStr = dateFormatter.format(returnDay);
+    final String departDateStr = DateFormat('yyyy-MM-dd').format(departDay);
+    final String returnDateStr = DateFormat('yyyy-MM-dd').format(returnDay);
     final String departTimeStr = _departTime!.format(context);
     final String returnTimeStr = _returnTime!.format(context);
-
-    final int daysBetween = returnDay.difference(departDay).inDays + 1;
+    final double budget = double.parse(_budgetController.text);
 
     try {
+      final weatherData = await _weatherService.getWeatherForecast(location);
       final result = await GeminiService.generateItinerary(
         location,
-        departDayStr,
-        returnDayStr,
+        departDateStr,
+        returnDateStr,
         departTimeStr,
         returnTimeStr,
-        daysBetween,
-        double.parse(_budgetController.text),
+        totalDays,
+        budget,
       );
 
       if (result.containsKey('error')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['error'].toString(), style: TextStyle(color: _white)),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-        debugPrint('Gemini API Error: ${result['error']}');
-      } else {
-        // Prepare the trip details to be saved and passed
-        final Map<String, dynamic> generatedTripDetails = {
-          'location': location,
-          'departDay': departDayStr,
-          'returnDay': returnDayStr,
-          'departTime': departTimeStr,
-          'returnTime': returnTimeStr,
-          'totalDays': daysBetween,
-          'budget': double.parse(_budgetController.text),
-          'itinerary': (result['itinerary'] as List<dynamic>?)
-              ?.map((item) => item as Map<String, dynamic>)
-              .toList() ??
-              [],
-          'suggestions': (result['suggestions'] as List<dynamic>?)
-              ?.map((item) => item as String)
-              .toList() ??
-              [],
-          'createdAt': FieldValue.serverTimestamp(), // Add timestamp for history
-        };
-
-        // Save the newly generated itinerary to Firestore
-        await _firestoreService.saveItinerary(generatedTripDetails);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Itinerary generated and saved to history!', style: TextStyle(color: _white)),
-            backgroundColor: _mediumPurple,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-
-        // Navigate to the detail view, indicating it's a new trip for initial save logic in detail screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ViewItineraryDetailScreen(tripDetails: generatedTripDetails, isNewTrip: true),
-          ),
-        );
+        throw result['error'];
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error generating itinerary: $e', style: TextStyle(color: _white)),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+      final itinerary = result['itinerary'] as List<dynamic>? ?? [];
+      final List<Map<String, dynamic>> enrichedItinerary = [];
+      for (int i = 0; i < itinerary.length; i++) {
+        final date = departDay.add(Duration(days: i));
+        final dateStr = DateFormat('yyyy-MM-dd').format(date);
+        final weather = _weatherService.getWeatherForDate(weatherData, dateStr);
+
+        enrichedItinerary.add({
+          ...itinerary[i],
+          'date': dateStr,
+          'weather': weather ?? 'No data',
+        });
+      }
+
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+
+      final trip = {
+        'userId': userId,
+        'location': location,
+        'departDay': departDateStr,
+        'returnDay': returnDateStr,
+        'departTime': departTimeStr,
+        'returnTime': returnTimeStr,
+        'totalDays': totalDays,
+        'budget': budget,
+        'itinerary': enrichedItinerary,
+        'suggestions': result['suggestions'] ?? [],
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await _firestoreService.saveItinerary(trip);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ViewItineraryDetailScreen(tripDetails: trip, isNewTrip: true),
         ),
       );
-      debugPrint('Error generating itinerary: $e');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error generating itinerary: $e', style: TextStyle(color: _white)),
+        backgroundColor: Colors.redAccent,
+      ));
     } finally {
       setState(() => isLoading = false);
     }
@@ -829,7 +763,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 1), // Adjust as per your NavBar
+      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
     );
   }
 }

@@ -1,8 +1,9 @@
 // lib/screens/history_screen.dart
 import 'package:flutter/material.dart';
-import '../../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'view_itinerary_detail_screen.dart'; // Ensure this is imported
+import 'view_itinerary_detail_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -12,30 +13,50 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final FirestoreService _firestoreService = FirestoreService();
-  late Future<List<Map<String, dynamic>>> _itinerariesFuture;
+  late Future<List<Map<String, dynamic>>> _itinerariesFuture = Future.value([]);
 
   // Color scheme consistent with ItineraryScreen.dart and ViewItineraryDetailScreen.dart
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
-  final Color _lightPurple = const Color(0xFFF3E5F5); // Light violet from the background gradient
-  final Color _lightBeige = const Color(0xFFFFF5E6); // Light beige from the background gradient
+  final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _greyText = Colors.grey.shade600;
-  final Color _gradientStart = const Color(0xFFF3E5F5); // Light violet
-  final Color _gradientEnd = const Color(0xFFFFF5E6); // Light beige
+  final Color _gradientStart = const Color(0xFFF3E5F5);
+  final Color _gradientEnd = const Color(0xFFFFF5E6);
 
   @override
   void initState() {
     super.initState();
-    _loadItineraries();
+    _loadItineraries(); // This will now reassign the _itinerariesFuture once data is fetched
   }
 
-  void _loadItineraries() {
-    setState(() {
-      _itinerariesFuture = _firestoreService.getSavedItineraries();
-    });
+  void _loadItineraries() { // Removed 'async' here as we're now assigning the future directly
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      setState(() {
+        _itinerariesFuture = FirebaseFirestore.instance
+            .collection('itineraries')
+            .where('userId', isEqualTo: userId)
+            .orderBy('createdAt', descending: true)
+            .get()
+            .then((snapshot) {
+          return snapshot.docs.map((doc) {
+            // Ensure data is treated as Map<String, dynamic>
+            return {'id': doc.id, ...doc.data() as Map<String, dynamic>};
+          }).toList();
+        })
+            .catchError((error) {
+          print("Error loading itineraries: $error");
+          throw error; // Re-throw the error to be caught by FutureBuilder
+        });
+      });
+    } else {
+      // If no user is logged in, ensure the future resolves to an empty list
+      setState(() {
+        _itinerariesFuture = Future.value([]);
+      });
+    }
   }
 
   @override
@@ -76,7 +97,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Text(
-                    'Error loading history: ${snapshot.error}',
+                    // Display a user-friendly error message, extracting it from snapshot.error
+                    'Error loading history: ${snapshot.error.toString().contains('Failed to load itineraries') ? snapshot.error.toString().split('Failed to load itineraries: ')[1] : snapshot.error}',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.red.shade700, fontSize: 16),
                   ),
@@ -109,7 +131,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   final String returnDay = itineraryData['returnDay'] ?? 'N/A';
                   final String location = itineraryData['location'] ?? 'N/A';
                   final int totalDays = itineraryData['totalDays'] ?? 0;
-                  final Timestamp? createdAt = itineraryData['createdAt'] as Timestamp?;
+                  final Timestamp? createdAt = itineraryData['createdAt'] as Timestamp?; // Corrected here
 
                   // Formatted creation date
                   final String formattedCreatedAt = createdAt != null

@@ -13,7 +13,6 @@ class _InsuranceSuggestionScreenState extends State<InsuranceSuggestionScreen> {
   // Define color scheme consistent with ItineraryScreen
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
-  final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _white = Colors.white;
   final Color _greyText = Colors.grey.shade600;
