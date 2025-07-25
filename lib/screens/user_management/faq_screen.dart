@@ -93,7 +93,6 @@ class _FAQScreenState extends State<FAQScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              // TODO: Implement actual email launch (e.g., using url_launcher package)
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Opening email client... (Functionality not yet implemented)')),
               );
