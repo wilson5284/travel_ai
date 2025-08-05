@@ -1,4 +1,4 @@
 class ApiConstants {
-  static const String geminiApiKey = 'AIzaSyAWFdjI-RcLcx5cBgrLUbu2hb7LpKoJDQM';
-  static const String openWeatherApiKey = 'df6ddea1be6baf0bd0935c745b1583f1';
+  static const String geminiApiKey = 'AIzaSyDMnNqMml28kCpFm8dJesw9VrUVFmbQUMA';
+  static const String openWeatherApiKey = 'f3aa98d0acef45b183590756250408';
 }
