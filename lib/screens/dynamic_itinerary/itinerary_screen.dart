@@ -1,8 +1,8 @@
 // lib/screens/itinerary_screen.dart
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../services/gemini_service.dart';
 import '../../services/weather_service.dart';
 import '../../services/firestore_service.dart';
@@ -18,26 +18,31 @@ class ItineraryScreen extends StatefulWidget {
 }
 
 class _ItineraryScreen extends State<ItineraryScreen> {
-  final FirestoreService _firestoreService = FirestoreService();
-  final WeatherService _weatherService = WeatherService();
-
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
+  final TextEditingController _interestsController = TextEditingController(); // Added interests controller
+
   DateTime? _departDay;
   DateTime? _returnDay;
   TimeOfDay? _departTime;
   TimeOfDay? _returnTime;
-  bool isLoading = false;
-  bool isFormVisible = false;
 
-  // Color scheme (copied from home_screen for consistency)
+  bool isLoading = false;
+  bool isFormVisible = false; // Form is hidden by default
+
+  final WeatherService _weatherService = WeatherService();
+  final FirestoreService _firestoreService = FirestoreService();
+
+  // Color scheme
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
+  final Color _darkerOffWhite = const Color(0xFFEBEBEB);
+  final Color _violet = const Color(0xFF6A1B9A);
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
+  final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _greyText = Colors.grey.shade600;
-
 
   bool get _isFormFilled {
     return _locationController.text.isNotEmpty &&
@@ -52,32 +57,32 @@ class _ItineraryScreen extends State<ItineraryScreen> {
   @override
   void initState() {
     super.initState();
-    isFormVisible = false;
+    isFormVisible = false; // Form hidden by default
   }
 
+  // --- Date Picker Logic ---
   Future<void> _selectDate(BuildContext context, bool isDepartDate) async {
+    final DateTime now = DateTime.now();
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: isDepartDate
-          ? (_departDay ?? DateTime.now())
-          : (_returnDay ?? (_departDay ?? DateTime.now())),
-      firstDate: DateTime.now().subtract(const Duration(days: 0)),
-      lastDate: DateTime(2030),
+          ? (_departDay ?? now)
+          : (_returnDay ?? (_departDay ?? now)),
+      firstDate: now.subtract(const Duration(days: 0)), // Disable past dates
+      lastDate: DateTime(now.year + 5),
       builder: (context, child) {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: ColorScheme.light(
-              primary: _darkPurple, // Header background
-              onPrimary: _white, // Header text color
-              surface: _offWhite, // Calendar background
-              onSurface: _darkPurple, // Calendar text color
+              primary: _darkPurple,
+              onPrimary: _white,
+              onSurface: _darkPurple,
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
-                foregroundColor: _mediumPurple, // OK/CANCEL buttons
+                foregroundColor: _mediumPurple,
               ),
             ),
-            dialogBackgroundColor: _white, // Dialog background
           ),
           child: child!,
         );
@@ -88,13 +93,24 @@ class _ItineraryScreen extends State<ItineraryScreen> {
       setState(() {
         if (isDepartDate) {
           _departDay = pickedDate;
+          // Ensure return date is not before departure date
           if (_returnDay != null && _returnDay!.isBefore(_departDay!)) {
             _returnDay = _departDay;
           }
         } else {
-          _returnDay = pickedDate;
-          if (_departDay != null && _departDay!.isAfter(_returnDay!)) {
-            _departDay = _returnDay;
+          // Ensure return date is not before departure date
+          if (_departDay != null && pickedDate.isBefore(_departDay!)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Return date cannot be before departure date.',
+                  style: TextStyle(color: _white),
+                ),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          } else {
+            _returnDay = pickedDate;
           }
         }
         _validateTimesIfSameDay();
@@ -102,25 +118,25 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     }
   }
 
+  // --- Time Picker Logic ---
   Future<void> _selectTime(BuildContext context, bool isDepartTime) async {
+    final TimeOfDay now = TimeOfDay.now();
     final TimeOfDay? pickedTime = await showTimePicker(
       context: context,
-      initialTime: isDepartTime ? (_departTime ?? TimeOfDay.now()) : (_returnTime ?? TimeOfDay.now()),
+      initialTime: isDepartTime ? (_departTime ?? now) : (_returnTime ?? now),
       builder: (context, child) {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: ColorScheme.light(
-              primary: _darkPurple, // Header background
-              onPrimary: _white, // Header text color
-              surface: _offWhite, // Clock/numbers background
-              onSurface: _darkPurple, // Clock numbers/text color
+              primary: _darkPurple,
+              onPrimary: _white,
+              onSurface: _darkPurple,
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
-                foregroundColor: _mediumPurple, // OK/CANCEL buttons
+                foregroundColor: _mediumPurple,
               ),
             ),
-            dialogBackgroundColor: _white, // Dialog background
           ),
           child: child!,
         );
@@ -141,6 +157,23 @@ class _ItineraryScreen extends State<ItineraryScreen> {
 
   void _validateTimesIfSameDay() {
     if (_departDay != null && _returnDay != null && _departTime != null && _returnTime != null) {
+      // Check if the departure date is the current day
+      final now = DateTime.now();
+      if (_departDay!.year == now.year && _departDay!.month == now.month && _departDay!.day == now.day) {
+        if (_departTime!.hour < now.hour || (_departTime!.hour == now.hour && _departTime!.minute < now.minute)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Departure time cannot be in the past.',
+                style: TextStyle(color: _white),
+              ),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          _departTime = TimeOfDay.now(); // Reset to current time
+        }
+      }
+      // Check if return time is before departure time on the same day
       if (_departDay!.year == _returnDay!.year &&
           _departDay!.month == _returnDay!.month &&
           _departDay!.day == _returnDay!.day) {
@@ -149,8 +182,10 @@ class _ItineraryScreen extends State<ItineraryScreen> {
 
         if (returnDateTime.isBefore(departDateTime)) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Return time cannot be before departure time on the same day. Adjusting return time.')),
+            SnackBar(
+              content: Text('Return time cannot be before departure time on the same day. Adjusted to departure time.', style: TextStyle(color: _white)),
+              backgroundColor: Colors.redAccent,
+            ),
           );
           _returnTime = _departTime;
         }
@@ -158,87 +193,137 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     }
   }
 
+  // --- Itinerary Generation Logic ---
   void _generateItinerary() async {
     if (!_isFormFilled) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Please fill in all fields correctly.', style: TextStyle(color: _white)),
-        backgroundColor: _mediumPurple,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please fill in all fields correctly.', style: TextStyle(color: _white)),
+          backgroundColor: _mediumPurple,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
       return;
     }
 
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+    });
 
     final String location = _locationController.text;
     final DateTime departDay = _departDay!;
     final DateTime returnDay = _returnDay!;
-    final int totalDays = returnDay.difference(departDay).inDays + 1;
+    final int daysBetween = returnDay.difference(departDay).inDays + 1;
 
-    final String departDateStr = DateFormat('yyyy-MM-dd').format(departDay);
-    final String returnDateStr = DateFormat('yyyy-MM-dd').format(returnDay);
-    final String departTimeStr = _departTime!.format(context);
-    final String returnTimeStr = _returnTime!.format(context);
-    final double budget = double.parse(_budgetController.text);
-
+    // Weather Check
     try {
       final weatherData = await _weatherService.getWeatherForecast(location);
+      if (weatherData.containsKey('error')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Weather check encountered an error: ${weatherData['error']}. Proceeding with itinerary generation.', style: TextStyle(color: _white)),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+        _showWeatherReminderDialog(location, "Weather data could not be fetched due to an error. Please verify weather conditions independently.");
+      } else {
+        if (_weatherService.hasBadWeather(weatherData)) {
+          final weatherDescription = _weatherService.getWeatherDescriptionForDateRange(weatherData, departDay, returnDay);
+          _showWeatherReminderDialog(location, "Warning: Bad weather conditions expected during your trip ($weatherDescription). Consider adjusting your plans.");
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Good weather expected for your trip to $location!', style: TextStyle(color: _white)),
+              backgroundColor: _mediumPurple,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to check weather due to a network error: $e. Proceeding with itinerary generation.', style: TextStyle(color: _white)),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      _showWeatherReminderDialog(location, "Weather data could not be fetched due to a network error. Please verify weather conditions independently.");
+    }
+
+    final DateFormat dateFormatter = DateFormat('yyyy-MM-dd');
+    final String departDayStr = dateFormatter.format(departDay);
+    final String returnDayStr = dateFormatter.format(returnDay);
+    final String departTimeStr = _departTime!.format(context);
+    final String returnTimeStr = _returnTime!.format(context);
+
+    try {
       final result = await GeminiService.generateItinerary(
         location,
-        departDateStr,
-        returnDateStr,
+        departDayStr,
+        returnDayStr,
         departTimeStr,
         returnTimeStr,
-        totalDays,
-        budget,
+        daysBetween,
+        double.parse(_budgetController.text),
+        _interestsController.text, // Pass the interests here
       );
 
       if (result.containsKey('error')) {
-        throw result['error'];
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['error'].toString(), style: TextStyle(color: _white)),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      } else {
+        final Map<String, dynamic> generatedTripDetails = {
+          'location': location,
+          'departDay': departDayStr,
+          'returnDay': returnDayStr,
+          'departTime': departTimeStr,
+          'returnTime': returnTimeStr,
+          'totalDays': daysBetween,
+          'budget': double.parse(_budgetController.text),
+          'interests': _interestsController.text,
+          'itinerary': (result['itinerary'] as List<dynamic>?)?.map((item) => item as Map<String, dynamic>).toList() ?? [],
+          'suggestions': (result['suggestions'] as List<dynamic>?)?.map((item) => item as String).toList() ?? [],
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+
+        await _firestoreService.saveItinerary(generatedTripDetails);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Itinerary generated and saved to history!', style: TextStyle(color: _white)),
+            backgroundColor: _mediumPurple,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ViewItineraryDetailScreen(tripDetails: generatedTripDetails, isNewTrip: true),
+          ),
+        );
       }
-
-      final itinerary = result['itinerary'] as List<dynamic>? ?? [];
-      final List<Map<String, dynamic>> enrichedItinerary = [];
-      for (int i = 0; i < itinerary.length; i++) {
-        final date = departDay.add(Duration(days: i));
-        final dateStr = DateFormat('yyyy-MM-dd').format(date);
-        final weather = _weatherService.getWeatherForDate(weatherData, dateStr);
-
-        enrichedItinerary.add({
-          ...itinerary[i],
-          'date': dateStr,
-          'weather': weather ?? 'No data',
-        });
-      }
-
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-
-      final trip = {
-        'userId': userId,
-        'location': location,
-        'departDay': departDateStr,
-        'returnDay': returnDateStr,
-        'departTime': departTimeStr,
-        'returnTime': returnTimeStr,
-        'totalDays': totalDays,
-        'budget': budget,
-        'itinerary': enrichedItinerary,
-        'suggestions': result['suggestions'] ?? [],
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await _firestoreService.saveItinerary(trip);
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ViewItineraryDetailScreen(tripDetails: trip, isNewTrip: true),
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating itinerary: $e', style: TextStyle(color: _white)),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Error generating itinerary: $e', style: TextStyle(color: _white)),
-        backgroundColor: Colors.redAccent,
-      ));
     } finally {
       setState(() => isLoading = false);
     }
@@ -249,7 +334,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: _white, // Consistent with currency converter card
+          backgroundColor: _white,
           title: Text('Weather Alert for $location', style: TextStyle(color: _darkPurple)),
           content: Text(message, style: TextStyle(color: _greyText)),
           actions: <Widget>[
@@ -265,62 +350,42 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     );
   }
 
-  // Input Decoration for consistency
   InputDecoration _buildInputDecoration(String labelText, {IconData? prefixIcon}) {
     return InputDecoration(
       labelText: labelText,
-      labelStyle: TextStyle(
-        color: _darkPurple.withOpacity(0.8),
-      ),
-      prefixIcon: prefixIcon != null
-          ? Icon(prefixIcon, color: _mediumPurple)
-          : null,
+      labelStyle: TextStyle(color: _darkPurple.withOpacity(0.8)),
+      prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: _mediumPurple) : null,
       filled: true,
       fillColor: _lightBeige.withOpacity(0.6),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: _mediumPurple.withOpacity(0.4),
-          width: 1.5,
-        ),
+        borderSide: BorderSide(color: _mediumPurple.withOpacity(0.4), width: 1.5),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: _mediumPurple.withOpacity(0.4),
-          width: 1.5,
-        ),
+        borderSide: BorderSide(color: _mediumPurple.withOpacity(0.4), width: 1.5),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: _darkPurple,
-          width: 2.0,
-        ),
+        borderSide: BorderSide(color: _darkPurple, width: 2.0),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2.0,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 2.0),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2.5,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 2.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     );
   }
 
-
   @override
   void dispose() {
     _locationController.dispose();
     _budgetController.dispose();
+    _interestsController.dispose();
     super.dispose();
   }
 
@@ -335,14 +400,13 @@ class _ItineraryScreen extends State<ItineraryScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFFF3E5F5), // Light violet
-              Color(0xFFFFF5E6), // Light beige
+              Color(0xFFF3E5F5),
+              Color(0xFFFFF5E6),
             ],
           ),
         ),
         child: Column(
           children: [
-            // Custom AppBar-like section
             Container(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top + 16,
@@ -369,16 +433,8 @@ class _ItineraryScreen extends State<ItineraryScreen> {
               ),
               child: Row(
                 children: [
-                  // Removed the back button and its SizedBox
-                  // IconButton(
-                  //   icon: Icon(Icons.arrow_back, color: _darkPurple),
-                  //   onPressed: () {
-                  //     Navigator.pop(context);
-                  //   },
-                  // ),
-                  // const SizedBox(width: 8),
                   Text(
-                    'Create Itinerary', // Title for generating new itinerary
+                    'Travel AI Assistant',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -388,374 +444,373 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                 ],
               ),
             ),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Section for generating new itinerary
+                    // Welcome Section
                     Text(
-                      'Plan Your Adventure',
+                      'Plan Your Perfect Adventure',
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: _darkPurple,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Text(
-                      'Fill in the details below to generate a personalized trip plan.',
+                      'Let our AI create personalized travel itineraries tailored to your preferences, budget, and interests. Get weather updates, budget management, and detailed day-by-day plans.',
                       style: TextStyle(
                         fontSize: 16,
                         color: _greyText,
+                        height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
 
-                    // Card for "Make an Itinerary" button (to toggle form)
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isFormVisible
-                              ? [Colors.grey.shade400, Colors.grey.shade300] // Dimmed when form is visible
-                              : [_darkPurple, _mediumPurple], // Active gradient
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.deepPurple.withOpacity(0.2),
-                            spreadRadius: 2,
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
+                    // Main Action Buttons
+                    if (!isFormVisible) ...[
+                      // Generate Itinerary Button
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [_darkPurple, _mediumPurple],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              isFormVisible = !isFormVisible;
-                              // Optionally clear form when hiding
-                              if (!isFormVisible) {
-                                _locationController.clear();
-                                _budgetController.clear();
-                                _departDay = null;
-                                _returnDay = null;
-                                _departTime = null;
-                                _returnTime = null;
-                              }
-                            });
-                          },
                           borderRadius: BorderRadius.circular(15),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  isFormVisible ? 'Hide Itinerary Form' : 'Make a New Itinerary',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isFormVisible ? _greyText : _white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.3),
+                              spreadRadius: 2,
+                              blurRadius: 10,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                isFormVisible = true;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(15),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.auto_awesome,
+                                    color: _white,
+                                    size: 28,
                                   ),
-                                ),
-                                Icon(
-                                  isFormVisible ? Icons.keyboard_arrow_up : Icons.add_circle_outline,
-                                  color: isFormVisible ? _greyText : _white,
-                                  size: 28,
-                                ),
-                              ],
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Generate New Itinerary',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: _white,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 20),
 
-                    // Conditionally display the form
-                    if (isFormVisible)
-                      Column(
-                        children: [
-                          // Main Form Card
-                          Container(
-                            decoration: BoxDecoration(
-                              color: _white.withOpacity(0.8), // Card background
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.deepPurple.withOpacity(0.1),
-                                  spreadRadius: 2,
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              children: [
-                                TextField(
-                                  controller: _locationController,
-                                  style: TextStyle(color: _darkPurple, fontSize: 16),
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: _buildInputDecoration(
-                                    "Enter Location",
-                                    prefixIcon: Icons.location_on,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextField(
-                                  controller: _budgetController,
-                                  onChanged: (_) => setState(() {}),
-                                  style: TextStyle(color: _darkPurple, fontSize: 16),
-                                  decoration: _buildInputDecoration(
-                                    "Enter Budget (RM)",
-                                    prefixIcon: Icons.monetization_on,
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                ),
-                                const SizedBox(height: 24),
-
-                                // Departure Date and Time (Grouped)
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: () => _selectDate(context, true),
-                                        child: AbsorbPointer(
-                                          child: TextField(
-                                            style: TextStyle(color: _darkPurple, fontSize: 16),
-                                            controller: TextEditingController(
-                                                text: _departDay == null
-                                                    ? ''
-                                                    : DateFormat('yyyy-MM-dd').format(_departDay!)),
-                                            decoration: _buildInputDecoration(
-                                              "Departure Date",
-                                              prefixIcon: Icons.calendar_today,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: () => _selectTime(context, true),
-                                        child: AbsorbPointer(
-                                          child: TextField(
-                                            style: TextStyle(color: _darkPurple, fontSize: 16),
-                                            controller: TextEditingController(
-                                                text: _departTime == null
-                                                    ? ''
-                                                    : _departTime!.format(context)),
-                                            decoration: _buildInputDecoration(
-                                              "Departure Time",
-                                              prefixIcon: Icons.access_time,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-
-                                // Return Date and Time (Grouped)
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: () => _selectDate(context, false),
-                                        child: AbsorbPointer(
-                                          child: TextField(
-                                            style: TextStyle(color: _darkPurple, fontSize: 16),
-                                            controller: TextEditingController(
-                                                text: _returnDay == null
-                                                    ? ''
-                                                    : DateFormat('yyyy-MM-dd').format(_returnDay!)),
-                                            decoration: _buildInputDecoration(
-                                              "Return Date",
-                                              prefixIcon: Icons.calendar_today,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: () => _selectTime(context, false),
-                                        child: AbsorbPointer(
-                                          child: TextField(
-                                            style: TextStyle(color: _darkPurple, fontSize: 16),
-                                            controller: TextEditingController(
-                                                text: _returnTime == null
-                                                    ? ''
-                                                    : _returnTime!.format(context)),
-                                            decoration: _buildInputDecoration(
-                                              "Return Time",
-                                              prefixIcon: Icons.access_time,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 32),
-
-                                // Generate Itinerary Button
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: AbsorbPointer(
-                                    absorbing: isLoading || !canGenerate,
-                                    child: Opacity(
-                                      opacity: (isLoading || !canGenerate) ? 0.6 : 1.0,
-                                      child: ElevatedButton.icon(
-                                        onPressed: _generateItinerary,
-                                        icon: isLoading
-                                            ? const SizedBox(width: 0)
-                                            : const Icon(Icons.auto_awesome, color: Colors.white),
-                                        label: isLoading
-                                            ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                            : const Text(
-                                          'Generate Itinerary',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: _darkPurple, // Main button background
-                                          foregroundColor: _white,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(vertical: 16),
-                                          elevation: 3,
-                                          shadowColor: Colors.deepPurple.withOpacity(0.3),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Center(
-                            child: Text(
-                              "Your generated itinerary will appear in a new screen and be saved to history.",
-                              style: TextStyle(fontWeight: FontWeight.bold, color: _greyText),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-
-                    // Section for viewing past itineraries
-                    Text(
-                      'Your Past Adventures',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: _darkPurple,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Access and manage all your previous trip plans.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: _greyText,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Card for "View All Past Itineraries" button
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)], // Darker purple to pinkish-purple
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.deepPurple.withOpacity(0.2),
-                            spreadRadius: 2,
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
+                      // View History Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(builder: (context) => const HistoryScreen()),
                             );
                           },
-                          borderRadius: BorderRadius.circular(20),
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'View All Past Itineraries',
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        color: _white,
-                                      ),
-                                    ),
-                                    Icon(Icons.history, color: _white, size: 36),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Review, modify, or share your saved trip plans from history.',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: _offWhite,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Align(
-                                  alignment: Alignment.bottomRight,
-                                  child: Icon(Icons.arrow_forward_ios, color: _offWhite, size: 24),
-                                ),
-                              ],
+                          icon: const Icon(Icons.history, color: Colors.white),
+                          label: const Text(
+                            'View Itinerary History',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _mediumPurple,
+                            foregroundColor: _white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            elevation: 3,
+                            shadowColor: Colors.deepPurple.withOpacity(0.3),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24), // Ensure bottom padding
+                      const SizedBox(height: 30),
+
+                      // Features Info
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: _white.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Features:',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildFeatureItem(Icons.wb_sunny_outlined, 'Weather Integration'),
+                            _buildFeatureItem(Icons.account_balance_wallet_outlined, 'Budget Management'),
+                            _buildFeatureItem(Icons.star_outline, 'Personalized Recommendations'),
+                            _buildFeatureItem(Icons.schedule_outlined, 'Detailed Day Plans'),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Form Section (appears when Generate Itinerary is clicked)
+                    if (isFormVisible) ...[
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                isFormVisible = false;
+                              });
+                            },
+                            icon: Icon(Icons.arrow_back, color: _darkPurple),
+                          ),
+                          Text(
+                            'Create Your Itinerary',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: _darkPurple,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _white.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _locationController,
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              onChanged: (_) => setState(() {}),
+                              decoration: _buildInputDecoration(
+                                "Enter Location",
+                                prefixIcon: Icons.location_on,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _budgetController,
+                              onChanged: (_) => setState(() {}),
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                "Enter Budget (RM)",
+                                prefixIcon: Icons.monetization_on,
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _interestsController,
+                              onChanged: (_) => setState(() {}),
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                "Interests (e.g., food, nature)",
+                                prefixIcon: Icons.star,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _selectDate(context, true),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        style: TextStyle(color: _darkPurple, fontSize: 16),
+                                        controller: TextEditingController(
+                                          text: _departDay == null
+                                              ? ''
+                                              : DateFormat('yyyy-MM-dd').format(_departDay!),
+                                        ),
+                                        decoration: _buildInputDecoration(
+                                          "Departure Date",
+                                          prefixIcon: Icons.calendar_today,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _selectTime(context, true),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        style: TextStyle(color: _darkPurple, fontSize: 16),
+                                        controller: TextEditingController(
+                                          text: _departTime == null
+                                              ? ''
+                                              : _departTime!.format(context),
+                                        ),
+                                        decoration: _buildInputDecoration(
+                                          "Departure Time",
+                                          prefixIcon: Icons.access_time,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _selectDate(context, false),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        style: TextStyle(color: _darkPurple, fontSize: 16),
+                                        controller: TextEditingController(
+                                          text: _returnDay == null
+                                              ? ''
+                                              : DateFormat('yyyy-MM-dd').format(_returnDay!),
+                                        ),
+                                        decoration: _buildInputDecoration(
+                                          "Return Date",
+                                          prefixIcon: Icons.calendar_today,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _selectTime(context, false),
+                                    child: AbsorbPointer(
+                                      child: TextField(
+                                        style: TextStyle(color: _darkPurple, fontSize: 16),
+                                        controller: TextEditingController(
+                                          text: _returnTime == null
+                                              ? ''
+                                              : _returnTime!.format(context),
+                                        ),
+                                        decoration: _buildInputDecoration(
+                                          "Return Time",
+                                          prefixIcon: Icons.access_time,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                            SizedBox(
+                              width: double.infinity,
+                              child: AbsorbPointer(
+                                absorbing: isLoading || !canGenerate,
+                                child: Opacity(
+                                  opacity: (isLoading || !canGenerate) ? 0.6 : 1.0,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _generateItinerary,
+                                    icon: isLoading
+                                        ? const SizedBox(width: 0)
+                                        : const Icon(Icons.auto_awesome, color: Colors.white),
+                                    label: isLoading
+                                        ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                        : const Text(
+                                      'Generate Itinerary',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _darkPurple,
+                                      foregroundColor: _white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      elevation: 3,
+                                      shadowColor: Colors.deepPurple.withOpacity(0.3),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Center(
+                        child: Text(
+                          "Your generated itinerary will appear in a new screen and be saved to history.",
+                          style: TextStyle(fontWeight: FontWeight.bold, color: _greyText),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -763,7 +818,26 @@ class _ItineraryScreen extends State<ItineraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 0),
+    );
+  }
+
+  Widget _buildFeatureItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, color: _mediumPurple, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              color: _greyText,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

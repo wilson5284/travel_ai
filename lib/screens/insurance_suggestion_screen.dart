@@ -241,7 +241,7 @@ class _InsuranceSuggestionScreenState extends State<InsuranceSuggestionScreen> {
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         elevation: 3,
-                        shadowColor: _darkPurple.withOpacity(0.3),
+                        shadowColor: _darkPurple.withAlpha((255 * 0.3).round()),
                       ),
                     ),
                   ),
@@ -313,11 +313,11 @@ class _InsuranceSuggestionScreenState extends State<InsuranceSuggestionScreen> {
   Widget _buildInputCard({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
-        color: _white.withOpacity(0.8), // Consistent card background
+        color: _white.withAlpha((255 * 0.8).round()), // Consistent card background
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.deepPurple.withOpacity(0.1),
+            color: Colors.deepPurple.withAlpha((255 * 0.1).round()),
             spreadRadius: 2,
             blurRadius: 20,
             offset: const Offset(0, 8),
@@ -385,9 +385,9 @@ class _InsuranceSuggestionScreenState extends State<InsuranceSuggestionScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1), // Light version of the accent color
+        color: color.withAlpha((255 * 0.1).round()), // Light version of the accent color
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha((255 * 0.3).round())),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,25 +446,25 @@ class _InsuranceSuggestionScreenState extends State<InsuranceSuggestionScreen> {
         labelText: labelText,
         hintText: hintText,
         labelStyle: TextStyle(
-          color: _darkPurple.withOpacity(0.8),
+          color: _darkPurple.withAlpha((255 * 0.8).round()),
         ),
         hintStyle: TextStyle(
-          color: _greyText.withOpacity(0.6),
+          color: _greyText.withAlpha((255 * 0.6).round()),
         ),
         prefixIcon: Icon(icon, color: _mediumPurple),
         filled: true,
-        fillColor: _lightBeige.withOpacity(0.6),
+        fillColor: _lightBeige.withAlpha((255 * 0.6).round()),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: _mediumPurple.withOpacity(0.4),
+            color: _mediumPurple.withAlpha((255 * 0.4).round()),
             width: 1.5,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: _mediumPurple.withOpacity(0.4),
+            color: _mediumPurple.withAlpha((255 * 0.4).round()),
             width: 1.5,
           ),
         ),

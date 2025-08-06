@@ -1,4 +1,4 @@
-// lib/screens/home/home_screen.dart
+// lib/screens/home_screen.dart - COMPLETE HOMEPAGE WITH BANNER INTEGRATION
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -6,9 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/bottom_nav_bar.dart';
-import 'dynamic_itinerary/itinerary_screen.dart'; // Assuming this path
-import 'insurance_suggestion_screen.dart'; // Assuming this path
-import 'emergency_screen.dart'; // <--- Corrected import path for EmergencyScreen
+import '../widgets/ad_banner_widget.dart';
+import 'dynamic_itinerary/itinerary_screen.dart';
+import 'insurance_suggestion_screen.dart';
+import 'emergency_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Color scheme
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
-  final Color _violet = const Color(0xFF6A1B9A); // A specific violet shade for emphasis
+  final Color _violet = const Color(0xFF6A1B9A);
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
@@ -62,8 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (e) {
         print("Error loading user currency from Firestore: $e");
         setState(() {
-          _baseCurrency = 'USD'; // Fallback
-          _targetCurrency = 'MYR'; // Fallback
+          _baseCurrency = 'USD';
+          _targetCurrency = 'MYR';
         });
         _showSnackBar('Failed to load preferred currency. Using defaults.', backgroundColor: Colors.orange);
       }
@@ -112,7 +113,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showSnackBar(String message, {Color? backgroundColor}) {
-    // Ensure context is still valid before showing SnackBar
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -144,11 +144,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      _convertedAmount = null; // Clear previous result during conversion
+      _convertedAmount = null;
     });
 
-    // Make sure you replace 'YOUR_EXCHANGERATE_API_KEY' with your actual key
-    // Using your provided key directly now:
     const String apiKey = 'fb86156312e869b5e58cc332';
     final url = Uri.parse(
       'https://v6.exchangerate-api.com/v6/$apiKey/pair/$_baseCurrency/$_targetCurrency/$amount',
@@ -185,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final temp = _baseCurrency!;
         _baseCurrency = _targetCurrency;
         _targetCurrency = temp;
-        _convertedAmount = null; // Clear result after swap
+        _convertedAmount = null;
       });
     }
   }
@@ -194,24 +192,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return InputDecoration(
       labelText: labelText,
       labelStyle: TextStyle(
-        color: _darkPurple.withOpacity(0.8),
+        color: _darkPurple.withValues(alpha: 0.8),
       ),
       prefixIcon: prefixIcon != null
           ? Icon(prefixIcon, color: _mediumPurple)
           : null,
       filled: true,
-      fillColor: _lightBeige.withOpacity(0.6),
+      fillColor: _lightBeige.withValues(alpha: 0.6),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: _mediumPurple.withOpacity(0.4),
+          color: _mediumPurple.withValues(alpha: 0.4),
           width: 1.5,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: _mediumPurple.withOpacity(0.4),
+          color: _mediumPurple.withValues(alpha: 0.4),
           width: 1.5,
         ),
       ),
@@ -308,6 +306,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // TOP BANNER - This will automatically track impressions and clicks
+                    const AdBannerWidget(
+                      position: 'top',
+                      height: 120,
+                      margin: EdgeInsets.only(bottom: 20),
+                    ),
+
                     // Currency Converter Section
                     Text(
                       'Currency Converter',
@@ -328,11 +333,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 32),
                     Container(
                       decoration: BoxDecoration(
-                        color: _white.withOpacity(0.8),
+                        color: _white.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.deepPurple.withOpacity(0.1),
+                            color: Colors.deepPurple.withValues(alpha: 0.1),
                             spreadRadius: 2,
                             blurRadius: 20,
                             offset: const Offset(0, 8),
@@ -353,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
-                                        color: _darkPurple.withOpacity(0.9),
+                                        color: _darkPurple.withValues(alpha: 0.9),
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -395,8 +400,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: Container(
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: _mediumPurple.withOpacity(0.1),
-                                    border: Border.all(color: _mediumPurple.withOpacity(0.3)),
+                                    color: _mediumPurple.withValues(alpha: 0.1),
+                                    border: Border.all(color: _mediumPurple.withValues(alpha: 0.3)),
                                   ),
                                   child: IconButton(
                                     onPressed: _swapCurrencies,
@@ -418,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
-                                        color: _darkPurple.withOpacity(0.9),
+                                        color: _darkPurple.withValues(alpha: 0.9),
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -466,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 16,
                             ),
                             onChanged: (value) {
-                              setState(() {}); // Trigger rebuild to update UI if needed
+                              setState(() {});
                             },
                           ),
                           const SizedBox(height: 24),
@@ -482,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 elevation: 3,
-                                shadowColor: Colors.deepPurple.withOpacity(0.3),
+                                shadowColor: Colors.deepPurple.withValues(alpha: 0.3),
                               ),
                               child: const Text(
                                 "CONVERT CURRENCY",
@@ -499,10 +504,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: _lightPurple.withOpacity(0.6),
+                                color: _lightPurple.withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: _mediumPurple.withOpacity(0.4),
+                                  color: _mediumPurple.withValues(alpha: 0.4),
                                 ),
                               ),
                               child: RichText(
@@ -533,9 +538,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 40), // Spacing after currency converter
+                    const SizedBox(height: 40),
 
-                    // New Section: Make an Itinerary
+                    // MIDDLE BANNER - Shown between content sections
+                    const AdBannerWidget(
+                      position: 'middle',
+                      height: 100,
+                      margin: EdgeInsets.symmetric(vertical: 20),
+                    ),
+
+                    // Plan Your Next Adventure Section
                     Text(
                       'Plan Your Next Adventure',
                       style: TextStyle(
@@ -553,6 +565,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
+                    // Generate New Itinerary Card
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -564,14 +578,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)], // Darker purple to pinkish-purple
+                            colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.deepPurple.withOpacity(0.2),
+                              color: Colors.deepPurple.withValues(alpha: 0.2),
                               spreadRadius: 2,
                               blurRadius: 20,
                               offset: const Offset(0, 10),
@@ -615,6 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 24),
 
+                    // Travel Insurance Advisor Card
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -626,14 +641,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)], // Darker purple to pinkish-purple
+                            colors: [Color(0xFF6A1B9A), Color(0xFFC86FAE)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.deepPurple.withOpacity(0.2),
+                              color: Colors.deepPurple.withValues(alpha: 0.2),
                               spreadRadius: 2,
                               blurRadius: 20,
                               offset: const Offset(0, 10),
@@ -675,9 +690,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24), // Add spacing after Insurance button
+                    const SizedBox(height: 24),
 
-                    // --- NEW: Emergency Services Button ---
+                    // Emergency Services Card
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -688,16 +703,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          // Using a red gradient to visually signify 'emergency'
                           gradient: const LinearGradient(
-                            colors: [Color(0xFFEF5350), Color(0xFFC62828)], // Red gradient
+                            colors: [Color(0xFFEF5350), Color(0xFFC62828)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.red.withOpacity(0.2), // Red shadow
+                              color: Colors.red.withValues(alpha: 0.2),
                               spreadRadius: 2,
                               blurRadius: 20,
                               offset: const Offset(0, 10),
@@ -718,12 +732,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                     color: _white,
                                   ),
                                 ),
-                                Icon(Icons.warning_amber_rounded, color: _white, size: 36), // Warning icon
+                                Icon(Icons.warning_amber_rounded, color: _white, size: 36),
                               ],
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Find local emergency contacts and important information.',
+                              'Find local emergency contacts and important information for your destination.',
                               style: TextStyle(
                                 fontSize: 15,
                                 color: _offWhite,
@@ -739,7 +753,168 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24), // Final bottom padding
+
+                    // BOTTOM BANNER - Shown at the end of content
+                    const AdBannerWidget(
+                      position: 'bottom',
+                      height: 120,
+                      margin: EdgeInsets.symmetric(vertical: 20),
+                    ),
+
+                    // Additional Features Section
+                    const SizedBox(height: 20),
+                    Text(
+                      'Additional Features',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: _darkPurple,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Quick Access Cards
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.blue.shade50, Colors.blue.shade100],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.history, color: Colors.blue.shade600, size: 32),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Conversion\nHistory',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.green.shade50, Colors.green.shade100],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.favorite, color: Colors.green.shade600, size: 32),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Saved\nItineraries',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green.shade700,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.orange.shade50, Colors.orange.shade100],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.language, color: Colors.orange.shade600, size: 32),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Language\nGuide',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange.shade700,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.purple.shade50, Colors.purple.shade100],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.settings, color: Colors.purple.shade600, size: 32),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'App\nSettings',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.purple.shade700,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:travel_ai/screens/chatbot_screen.dart';
+import 'package:travel_ai/screens/chatbot/chatbot_screen.dart';
+import 'package:travel_ai/screens/user_chat_screen.dart'; // Add this import
 
 class FAQScreen extends StatefulWidget {
   const FAQScreen({super.key});
@@ -17,7 +18,7 @@ class _FAQScreenState extends State<FAQScreen> {
   final Color _lightBeige = const Color(0xFFFFF5E6);
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
-      final Color _lightPurple = const Color(0xFFF3E5F5);
+  final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _greyText = Colors.grey.shade600;
   final Color _redEmergency = Colors.red.shade700; // From emergency_screen for consistent action color
 
@@ -49,7 +50,7 @@ class _FAQScreenState extends State<FAQScreen> {
     },
     {
       'question': 'How do I contact customer support?',
-      'answer': 'If your question isn\'t answered here, you can use the "Ask Admin" button to send us an email, or "Open Chatbot" to get instant assistance from our AI.'
+      'answer': 'If your question isn\'t answered here, you can use the "Ask Admin" button to send us a message through our support chat, or "Open Chatbot" to get instant assistance from our AI.'
     },
     {
       'question': 'Is this app free to use?',
@@ -75,35 +76,11 @@ class _FAQScreenState extends State<FAQScreen> {
   }
 
   void _askAdmin() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: _white, // Consistent background
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text('Contact Support', style: TextStyle(color: _darkPurple)),
-        content: Text(
-          'This feature will open your email client to send a message to our support team. Please ensure you have an email app configured.',
-          style: TextStyle(color: _greyText),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: _mediumPurple)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Opening email client... (Functionality not yet implemented)')),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _redEmergency, // Consistent action color
-              foregroundColor: _white,
-            ),
-            child: const Text('Proceed'),
-          )
-        ],
+    // Navigate directly to the user chat screen for admin support
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const UserChatScreen(),
       ),
     );
   }
@@ -270,21 +247,22 @@ class _FAQScreenState extends State<FAQScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.email_outlined), // Changed icon for email
-                      onPressed: _askAdmin,
-                      label: const Text('Ask Admin'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _redEmergency, // Consistent action color (e.g., emergency red)
-                        foregroundColor: _white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.support_agent), // Changed to support agent icon
+                        onPressed: _askAdmin,
+                        label: const Text('Ask Admin'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _redEmergency, // Consistent action color (e.g., emergency red)
+                          foregroundColor: _white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          textStyle: const TextStyle(fontSize: 16), // Slightly smaller for 2 buttons
+                          elevation: 5,
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        textStyle: const TextStyle(fontSize: 16), // Slightly smaller for 2 buttons
-                        elevation: 5,
-                      ),
-                    ),
+                      )
+
                   ),
                   const SizedBox(width: 16),
                   Expanded(

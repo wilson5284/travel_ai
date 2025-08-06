@@ -1,23 +1,21 @@
-// lib/screens/my_reports_list_screen.dart
+// lib/screens/admin/admin_reports_list_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/admin_bottom_nav_bar.dart';
+import 'report_management_screen.dart';
 
-// Import the ReportManagementScreen correctly
-import '../admin/report_management_screen.dart';
-
-class MyReportsListScreen extends StatefulWidget {
-  const MyReportsListScreen({super.key});
+class AdminReportsListScreen extends StatefulWidget {
+  const AdminReportsListScreen({super.key});
 
   @override
-  State<MyReportsListScreen> createState() => _MyReportsListScreenState();
+  State<AdminReportsListScreen> createState() => _AdminReportsListScreenState();
 }
 
-class _MyReportsListScreenState extends State<MyReportsListScreen> {
+class _AdminReportsListScreenState extends State<AdminReportsListScreen> {
   String _filterStatus = 'all';
   String _searchQuery = '';
 
-  // Consistent Color Scheme matching admin interface
+  // Consistent Color Scheme
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
   final Color _darkPurple = const Color(0xFF6A1B9A);
@@ -104,50 +102,13 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
     );
   }
 
-  Widget _buildFilterChip(String label, String value) {
-    final bool isSelected = _filterStatus == value;
-    final Color chipColor = value == 'all' ? _darkPurple : _getStatusColor(value);
-
-    return GestureDetector(
-      onTap: () => setState(() => _filterStatus = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: isSelected
-              ? LinearGradient(
-            colors: value == 'all'
-                ? [_mediumPurple, _darkPurple]
-                : [chipColor.withValues(alpha: 0.8), chipColor],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-              : null,
-          color: isSelected ? null : chipColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? chipColor : chipColor.withValues(alpha: 0.5),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? _white : chipColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Method to filter documents locally
+  // Method to filter documents locally (for both status and search)
   List<QueryDocumentSnapshot> _filterDocuments(List<QueryDocumentSnapshot> docs) {
     return docs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       final status = (data['status'] ?? 'pending').toString().toLowerCase();
+      final email = (data['email'] ?? '').toString().toLowerCase();
       final subject = (data['subject'] ?? '').toString().toLowerCase();
-      final report = (data['report'] ?? '').toString().toLowerCase();
       final message = (data['message'] ?? '').toString().toLowerCase();
 
       // Apply status filter
@@ -155,8 +116,8 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
 
       // Apply search filter
       bool searchMatch = _searchQuery.isEmpty ||
+          email.contains(_searchQuery.toLowerCase()) ||
           subject.contains(_searchQuery.toLowerCase()) ||
-          report.contains(_searchQuery.toLowerCase()) ||
           message.contains(_searchQuery.toLowerCase());
 
       return statusMatch && searchMatch;
@@ -165,47 +126,15 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text('My Reports', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
-          centerTitle: true,
-          backgroundColor: _white,
-          foregroundColor: _darkPurple,
-        ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [_gradientStart, _gradientEnd],
-            ),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.login, size: 80, color: _lightPurple),
-                const SizedBox(height: 16),
-                Text(
-                  'Please log in to view your reports.',
-                  style: TextStyle(fontSize: 18, color: _greyText),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    final reportsRef = FirebaseFirestore.instance.collection('reports');
+    // Always get all reports and filter locally for better performance with search + status filter
+    final reportsQuery = FirebaseFirestore.instance
+        .collection('reports')
+        .orderBy('lastUpdated', descending: true);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text('My Reports', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
+        title: Text('User Reports', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: _white,
         foregroundColor: _darkPurple,
@@ -227,7 +156,7 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                     TextField(
                       onChanged: (value) => setState(() => _searchQuery = value),
                       decoration: InputDecoration(
-                        hintText: 'Search your reports...',
+                        hintText: 'Search by email or subject...',
                         hintStyle: TextStyle(color: _greyText),
                         prefixIcon: Icon(Icons.search, color: _darkPurple),
                         filled: true,
@@ -273,17 +202,13 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
           ),
         ),
         child: StreamBuilder<QuerySnapshot>(
-          stream: reportsRef
-              .where('userId', isEqualTo: user.uid)
-              .orderBy('lastUpdated', descending: true)
-              .snapshots(),
+          stream: reportsQuery.snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator(color: _darkPurple));
             }
 
             if (snapshot.hasError) {
-              print('Firebase Stream Error (MyReportsListScreen): ${snapshot.error}');
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -292,7 +217,7 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                     const SizedBox(height: 16),
                     Text(
                       'Error loading reports: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red, fontSize: 16),
+                      style: TextStyle(color: Colors.red, fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -313,11 +238,6 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                       'No reports found.',
                       style: TextStyle(fontSize: 18, color: _greyText),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Create your first report to get started!',
-                      style: TextStyle(fontSize: 14, color: _greyText),
-                    ),
                   ],
                 ),
               );
@@ -331,11 +251,8 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      _searchQuery.isNotEmpty ? Icons.search_off : Icons.filter_list_off,
-                      size: 80,
-                      color: _lightPurple,
-                    ),
+                    Icon(_searchQuery.isNotEmpty ? Icons.search_off : Icons.filter_list_off,
+                        size: 80, color: _lightPurple),
                     const SizedBox(height: 16),
                     Text(
                       _searchQuery.isNotEmpty
@@ -390,16 +307,15 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: filteredDocs.length,
                     itemBuilder: (context, index) {
-                      final reportDoc = filteredDocs[index];
-                      final data = reportDoc.data() as Map<String, dynamic>;
-                      final reportId = reportDoc.id;
-
-                      final String subject = data['subject'] ?? data['report'] ?? 'No subject';
-                      final String reportText = data['report'] ?? data['message'] ?? 'No description available';
-                      final String status = data['status'] ?? 'pending';
-                      final Timestamp? createdAt = data['createdAt'];
-                      final Timestamp? lastUpdated = data['lastUpdated'];
-                      final List<dynamic> messages = data['messages'] ?? [];
+                      final doc = filteredDocs[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final reportId = doc.id;
+                      final email = data['email'] ?? 'Unknown';
+                      final subject = data['subject'] ?? 'No subject';
+                      final message = data['message'] ?? '';
+                      final status = data['status'] ?? 'pending';
+                      final timestamp = data['lastUpdated'] ?? data['timestamp'];
+                      final messages = (data['messages'] as List?)?.length ?? 0;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -425,7 +341,7 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => ReportManagementScreen(reportId: reportId),
+                                    builder: (_) => ReportManagementScreen(reportId: reportId),
                                   ),
                                 );
                               },
@@ -452,8 +368,23 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                                       ],
                                     ),
                                     const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.email, size: 14, color: _greyText),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            email,
+                                            style: TextStyle(fontSize: 13, color: _greyText),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
                                     Text(
-                                      reportText,
+                                      message,
                                       style: TextStyle(fontSize: 14, color: _greyText),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
@@ -467,7 +398,7 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                                             Icon(Icons.access_time, size: 14, color: _greyText),
                                             const SizedBox(width: 4),
                                             Text(
-                                              _formatDateTime(lastUpdated ?? createdAt),
+                                              _formatDateTime(timestamp),
                                               style: TextStyle(fontSize: 12, color: _greyText),
                                             ),
                                           ],
@@ -477,7 +408,7 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
                                             Icon(Icons.message, size: 14, color: _greyText),
                                             const SizedBox(width: 4),
                                             Text(
-                                              '${messages.length} messages',
+                                              '$messages messages',
                                               style: TextStyle(fontSize: 12, color: _greyText),
                                             ),
                                             const SizedBox(width: 8),
@@ -501,12 +432,43 @@ class _MyReportsListScreenState extends State<MyReportsListScreen> {
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/report'); // Assuming you have this route
-        },
-        backgroundColor: _mediumPurple,
-        child: const Icon(Icons.add, color: Colors.white),
+      bottomNavigationBar: const AdminBottomNavBar(currentIndex: 1),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    final bool isSelected = _filterStatus == value;
+    final Color chipColor = value == 'all' ? _darkPurple : _getStatusColor(value);
+
+    return GestureDetector(
+      onTap: () => setState(() => _filterStatus = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+            colors: value == 'all'
+                ? [_mediumPurple, _darkPurple]
+                : [chipColor.withValues(alpha: 0.8), chipColor],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+              : null,
+          color: isSelected ? null : chipColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? chipColor : chipColor.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? _white : chipColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }

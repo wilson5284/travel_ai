@@ -1,13 +1,19 @@
-// lib/screens/chatbot_screen.dart
+// lib/screens/chatbot/chatbot_screen.dart
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Import for Clipboard functionality
+import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../widgets/bottom_nav_bar.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../widgets/bottom_nav_bar.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import '../widgets/typing_indicator.dart';
+import '../../widgets/typing_indicator.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -21,25 +27,27 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<Map<String, dynamic>> _messages = [];
   bool _isLoading = false;
-  String _preferredLanguage = 'English';
+  String _preferredLanguage = 'en'; // This will still be loaded but primarily for UI preferences or other features, not for AI response language.
   String? _userId;
   String? _currentChatSessionId;
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
+  bool _isShareMenuOpen = false;
 
   // New variables for in-chat search functionality (like the screenshot)
   bool _isInChatSearching = false; // To control visibility of the in-chat search bar
   final TextEditingController _inChatSearchController = TextEditingController();
   String _inChatSearchQuery = '';
-  List<int> _matchingMessageIndices = []; // Stores indices of messages with search query
+  final List<int> _matchingMessageIndices = []; // Stores indices of messages with search query
   int _currentMatchIndex = -1; // Index of the currently highlighted match
 
   // New variables for drawer search functionality
   final TextEditingController _drawerSearchController = TextEditingController();
   String _drawerSearchQuery = '';
 
-
   static const String geminiKey = 'AIzaSyATwBN9CJBt5fl9BNJ8k3WahI2HF8CY94g';
-
+  static const String _cloudTranslationApiKey = 'AIzaSyAA2CBf5lgQJ8Lrfbe1eui35HHw-4QuXfM';
   static const String _geminiModel = 'gemini-1.5-flash';
+
 
   static const Set<String> _travelKeywords = {
     'trip', 'travel', 'plan', 'destination', 'flight', 'hotel', 'visa',
@@ -55,7 +63,16 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     'landmark', 'historical site', 'national park', 'wildlife', 'safari',
     'trekking', 'hiking', 'camping', 'backpacking', 'resort', 'motel', 'hostel',
     'bungalow', 'villa', 'condo', 'apartment', 'air bnb', 'guesthouse',
-    'bed and breakfast', 'inn', 'residency', 'suite', 'room', 'check-in', 'check-out'
+    'bed and breakfast', 'inn', 'residency', 'suite', 'room', 'check-in', 'check-out','规划',
+    '旅游', '旅行', '目的地', '航班', '酒店', '签证', '探索', '访问', '行程', '假期',
+    '旅程', '观光', '冒险', '住宿', '交通', '导游', '路线', '景点', '套餐', '预订',
+    '订票', '出发', '到达', '机场', '车站', '博物馆', '海滩', '山', '城市', '国家',
+    '护照', '货币', '当地', '文化', '食物', '餐厅', '购物', '活动', '火车', '巴士',
+    '汽车', '邮轮', '渡轮', '地图', '方向', '行李', '打包', '安全', '紧急情况', '海关',
+    '边境', '汇率', '时差', '节日', '地标', '历史遗迹', '国家公园',
+    '野生动物', '野生动物园', '徒步', '露营', '背包旅行', '度假村', '汽车旅馆', '旅社',
+    '平房', '别墅', '公寓', '民宿', '旅馆', '住宿加早餐', '套房', '房间',
+    '入住', '退房',
   };
 
   // Define color scheme consistent with InsuranceSuggestionScreen
@@ -169,7 +186,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         await _startNewChat(sendGreeting: true);
       }
     } catch (e) {
-      print('Error loading chat session: $e');
+      // Consider using a logging framework like `logger` or `flutter_flogger`
+      // For now, replacing print with debugPrint for development visibility without affecting release builds.
+      debugPrint('Error loading chat session: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error loading chat history. Starting a new chat.')),
@@ -242,7 +261,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         SetOptions(merge: true),
       );
     } catch (e) {
-      print('Error saving chat history: $e');
+      debugPrint('Error saving chat history: $e');
     }
   }
 
@@ -284,6 +303,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           data['candidates'][0]['content']['parts'].isNotEmpty) {
         String greeting = data['candidates'][0]['content']['parts'][0]['text'];
 
+        // Initial greeting should still be translated based on _preferredLanguage
+        // as this is a general greeting, not a dynamic response to user input yet.
         if (_preferredLanguage != 'English') {
           greeting = await _translateText(greeting, _preferredLanguage);
         }
@@ -304,7 +325,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         await _saveCurrentMessage(fallbackMessage);
       }
     } catch (e) {
-      print('Error sending initial greeting: $e');
+      debugPrint('Error sending initial greeting: $e');
       final fallbackMessage = {
         'role': 'assistant',
         'content': 'Hello! How can I assist you with your travel plans today?',
@@ -344,16 +365,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
     _scrollToBottom();
 
+    // 1. Detect the language of the current user input using Cloud Translation API
+    final String detectedInputLanguageCode = await _detectLanguage(userInput);
+
     bool isTravelQuestion = false;
-    String processedInputForKeywordCheck = userInput;
+    final lowerCaseUserInput = userInput.toLowerCase();
 
-    if (_preferredLanguage != 'English') {
-      processedInputForKeywordCheck = await _translateText(userInput, 'English');
-    }
-
-    final lowerCaseProcessedInput = processedInputForKeywordCheck.toLowerCase();
+    // Check for keywords in the *original* user input (preferred language and Chinese keywords are already included)
     for (final keyword in _travelKeywords) {
-      if (lowerCaseProcessedInput.contains(keyword)) {
+      if (lowerCaseUserInput.contains(keyword.toLowerCase())) {
         isTravelQuestion = true;
         break;
       }
@@ -373,24 +393,51 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       return;
     }
 
+    // From here, we know it's a travel question.
+    // Now, prepare the conversation history for the Gemini API.
+
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$geminiKey');
     final headers = {
       'Content-Type': 'application/json',
     };
 
     List<Map<String, dynamic>> conversationHistoryForAI = [];
+
+    // Construct a dynamic system instruction for Gemini based on detected language
+    String systemInstruction = "You are a helpful travel assistant. Always answer questions about travel, tourism, places, itineraries, safety, visas, transportation, languages, and culture. Reply in clear, friendly sentences with proper Markdown formatting for lists, bold text, and paragraphs. Do not include introductory phrases like 'Here's your itinerary:' but start directly with the content.";
+
+    // Append instruction to respond in the detected language, if not English
+    if (detectedInputLanguageCode != 'en') { // 'en' is the language code for English
+      String targetLanguageName = _convertLanguageCodeToName(detectedInputLanguageCode);
+      if (targetLanguageName.isNotEmpty) {
+        systemInstruction += " Respond *only* in $targetLanguageName.";
+      }
+    }
+
     conversationHistoryForAI.add({
       "role": "user",
       "parts": [
-        {"text": "You are a helpful travel assistant. Always answer questions about travel, tourism, places, itineraries, safety, visas, transportation, languages, and culture. Reply in clear, friendly sentences with proper Markdown formatting for lists, bold text, and paragraphs. Do not include introductory phrases like 'Here's your itinerary:' but start directly with the content."}
+        {"text": systemInstruction}
       ]
     });
 
+    // Add previous messages to the conversation history.
+    // User messages from history will be translated to English for the AI's core processing,
+    // assuming the Gemini model is primarily tuned for English input for reasoning.
     for (var msg in _messages) {
+      String contentToSendToAI = msg['content'] as String;
+      if (msg['role'] == 'user') {
+        // Translate user input to English for AI comprehension, unless already English.
+        // This is important because the core prompt to Gemini is in English, and its
+        // understanding of history might be better if inputs are consistently English.
+        if (await _detectLanguage(contentToSendToAI) != 'en') { // Use 'en' for language code check
+          contentToSendToAI = await _translateText(contentToSendToAI, 'English');
+        }
+      }
       conversationHistoryForAI.add({
         'role': msg['role'] == 'user' ? 'user' : 'model',
         'parts': [
-          {'text': msg['content'] as String},
+          {'text': contentToSendToAI},
         ],
       });
     }
@@ -417,24 +464,20 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           data['candidates'][0]['content']['parts'].isNotEmpty) {
         String reply = data['candidates'][0]['content']['parts'][0]['text'];
 
+        // Clean up special characters
         reply = reply.replaceAll('â', "'");
         reply = reply.replaceAll('â€œ', '“').replaceAll('â€ ', '”');
         reply = reply.replaceAll('â€™', '’');
         reply = reply.replaceAll('â€”', '—');
         reply = reply.replaceAll('â€“', '–');
         reply = reply.replaceAll('â€¦', '…');
-
-        reply = reply.replaceAll('Ã©', 'é');
-        reply = reply.replaceAll('Ã¨', 'è');
-        reply = reply.replaceAll('Ã¢', 'â');
-        reply = reply.replaceAll('Ã®', 'î');
-
         reply = reply.replaceAll(RegExp(r'[\uFFFD]'), '');
 
-
-        if (_preferredLanguage != 'English') {
-          reply = await _translateText(reply, _preferredLanguage);
-        }
+        // *** REMOVE THE FOLLOWING LINE:
+        // if (_preferredLanguage != 'English') {
+        //   reply = await _translateText(reply, _preferredLanguage); // Translate AI's reply back to preferred language
+        // }
+        // The AI is now instructed to respond in the detected language directly.
 
         final assistantMessage = {
           'role': 'assistant',
@@ -457,25 +500,37 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
             errorMessage = 'Your input was flagged by safety filters. Please rephrase your question.';
           }
         }
+        // If an error occurs, consider translating the error message back to the detected input language
+        String localizedErrorMessage = errorMessage;
+        if (detectedInputLanguageCode != 'en') {
+          localizedErrorMessage = await _translateText(errorMessage, _convertLanguageCodeToName(detectedInputLanguageCode));
+        }
+
         final errorMessageData = {
           'role': 'assistant',
-          'content': errorMessage,
+          'content': localizedErrorMessage,
           'timestamp': Timestamp.now(),
         };
         await _saveCurrentMessage(errorMessageData);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage)),
+            SnackBar(content: Text(localizedErrorMessage)),
           );
         }
       }
     } catch (e) {
-      final errorMessage = {
+      String errorMessage = 'Error processing y our request. Please try again later.';
+      String localizedErrorMessage = errorMessage;
+      if (detectedInputLanguageCode != 'en') {
+        localizedErrorMessage = await _translateText(errorMessage, _convertLanguageCodeToName(detectedInputLanguageCode));
+      }
+
+      final errorMessageData = {
         'role': 'assistant',
-        'content': 'Error processing your request. Please try again later.',
+        'content': localizedErrorMessage,
         'timestamp': Timestamp.now(),
       };
-      await _saveCurrentMessage(errorMessage);
+      await _saveCurrentMessage(errorMessageData);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
@@ -488,6 +543,60 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _scrollToBottom();
     }
   }
+
+  // Helper to convert language code to full language name (for Gemini prompt)
+  String _convertLanguageCodeToName(String code) {
+    switch (code) {
+      case 'zh': return 'Chinese';
+      case 'en': return 'English';
+      case 'es': return 'Spanish';
+      case 'fr': return 'French';
+      case 'de': return 'German';
+      case 'ja': return 'Japanese';
+      case 'ko': return 'Korean';
+      case 'ar': return 'Arabic';
+      case 'ru': return 'Russian';
+      case 'pt': return 'Portuguese';
+      case 'it': return 'Italian';
+      case 'hi': return 'Hindi';
+      case 'id': return 'Indonesian';
+      case 'th': return 'Thai';
+      case 'vi': return 'Vietnamese';
+      case 'tr': return 'Turkish';
+      case 'nl': return 'Dutch';
+      case 'sv': return 'Swedish';
+      case 'pl': return 'Polish';
+      case 'da': return 'Danish';
+      case 'fi': return 'Finnish';
+      case 'no': return 'Norwegian';
+      case 'el': return 'Greek';
+      case 'he': return 'Hebrew';
+      case 'hu': return 'Hungarian';
+      case 'cs': return 'Czech';
+      case 'sk': return 'Slovak';
+      case 'ro': return 'Romanian';
+      case 'bg': return 'Bulgarian';
+      case 'uk': return 'Ukrainian';
+      case 'hr': return 'Croatian';
+      case 'fa': return 'Persian';
+      case 'ur': return 'Urdu';
+      case 'ms': return 'Malay';
+      case 'fil': return 'Filipino'; // Tagalog
+      case 'sw': return 'Swahili';
+      case 'zu': return 'Zulu';
+      case 'am': return 'Amharic';
+      case 'bn': return 'Bengali';
+      case 'gu': return 'Gujarati';
+      case 'kn': return 'Kannada';
+      case 'ml': return 'Malayalam';
+      case 'mr': return 'Marathi';
+      case 'pa': return 'Punjabi';
+      case 'ta': return 'Tamil';
+      case 'te': return 'Telugu';
+      default: return ''; // Return empty string for unsupported or unknown languages
+    }
+  }
+
 
   // --- In-Chat Search Functions ---
 
@@ -578,53 +687,106 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
   }
 
-  Future<String> _translateText(String text, String language) async {
-    if (language.toLowerCase() == 'english') return text;
+  // New function for language detection using Cloud Translation API
+  Future<String> _detectLanguage(String text) async {
+    if (_cloudTranslationApiKey.isEmpty) {
+      return "en";
+    }
 
-    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent?key=$geminiKey');
-    final headers = {
-      'Content-Type': 'application/json',
-    };
+    final url = Uri.parse('https://translation.googleapis.com/language/translate/v2/detect?key=$_cloudTranslationApiKey');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'q': text,
+      }),
+    );
 
-    final body = json.encode({
-      "contents": [
-        {
-          "parts": [
-            {"text": "Translate the following into $language. Just provide the translated text without any additional commentary."},
-          ]
-        },
-        {
-          "role": "user",
-          "parts": [
-            {"text": text},
-          ]
-        }
-      ],
-      "safetySettings": [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-      ],
-    });
-
-    try {
-      final response = await http.post(url, headers: headers, body: body);
+    if (response.statusCode == 200) {
       final data = json.decode(response.body);
+      return data['data']['detections'][0][0]['language'];
+    } else {
+      print('Language detection API error: ${response.body}');
+      return "en";
+    }
+  }
 
-      if (response.statusCode == 200 &&
-          data['candidates'] != null &&
-          data['candidates'].isNotEmpty &&
-          data['candidates'][0]['content'] != null &&
-          data['candidates'][0]['content']['parts'] != null &&
-          data['candidates'][0]['content']['parts'].isNotEmpty) {
-        return data['candidates'][0]['content']['parts'][0]['text']?.trim() ?? text;
-      } else {
-        return text;
-      }
-    } catch (e) {
-      print('Translation error: $e');
+  // Modified _translateText to use Cloud Translation API
+  Future<String> _translateText(String text, String targetLanguageCode) async {
+    if (_cloudTranslationApiKey.isEmpty || targetLanguageCode == 'en') {
       return text;
+    }
+
+    final url = Uri.parse('https://translation.googleapis.com/language/translate/v2?key=$_cloudTranslationApiKey');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'q': text,
+        'target': targetLanguageCode,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['data']['translations'][0]['translatedText'];
+    } else {
+      print('Translation API error: ${response.body}');
+      return text;
+    }
+  }
+
+
+  // Helper to convert language name (e.g., 'Chinese') to language code (e.g., 'zh')
+  String _convertLanguageNameToCode(String name) {
+    switch (name.toLowerCase()) {
+      case 'chinese': return 'zh';
+      case 'english': return 'en';
+      case 'spanish': return 'es';
+      case 'french': return 'fr';
+      case 'german': return 'de';
+      case 'japanese': return 'ja';
+      case 'korean': return 'ko';
+      case 'arabic': return 'ar';
+      case 'russian': return 'ru';
+      case 'portuguese': return 'pt';
+      case 'italian': return 'it';
+      case 'hindi': return 'hi';
+      case 'indonesian': return 'id';
+      case 'thai': return 'th';
+      case 'vietnamese': return 'vi';
+      case 'turkish': return 'tr';
+      case 'dutch': return 'nl';
+      case 'swedish': return 'sv';
+      case 'polish': return 'pl';
+      case 'danish': return 'da';
+      case 'finnish': return 'fi';
+      case 'norwegian': return 'no';
+      case 'greek': return 'el';
+      case 'hebrew': return 'he';
+      case 'hungarian': return 'hu';
+      case 'czech': return 'cs';
+      case 'slovak': return 'sk';
+      case 'romanian': return 'ro';
+      case 'bulgarian': return 'bg';
+      case 'ukrainian': return 'uk';
+      case 'croatian': return 'hr';
+      case 'persian': return 'fa';
+      case 'urdu': return 'ur';
+      case 'malay': return 'ms';
+      case 'filipino': return 'fil';
+      case 'swahili': return 'sw';
+      case 'zulu': return 'zu';
+      case 'amharic': return 'am';
+      case 'bengali': return 'bn';
+      case 'gujarati': return 'gu';
+      case 'kannada': return 'kn';
+      case 'malayalam': return 'ml';
+      case 'marathi': return 'mr';
+      case 'punjabi': return 'pa';
+      case 'tamil': return 'ta';
+      case 'telugu': return 'te';
+      default: return ''; // Return empty string for unsupported or unknown language names
     }
   }
 
@@ -671,7 +833,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     if (isCurrentHighlight) {
       backgroundColor = Colors.yellow[200]; // Highlight current match
     } else if (isSearchMatch) {
-      backgroundColor = _mediumPurple.withOpacity(0.3); // Highlight other matches with a purple tint
+      // Replaced .withOpacity() with .withAlpha() or .withBlue() etc.
+      // For this specific use case, .withAlpha() is a direct replacement for opacity.
+      backgroundColor = _mediumPurple.withAlpha((255 * 0.3).round()); // Highlight other matches with a purple tint
     }
 
     Widget messageContentWidget;
@@ -813,6 +977,329 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     );
   }
 
+  // Share entire conversation as text
+  Future<void> _shareConversationAsText() async {
+    if (_messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No messages to share')),
+      );
+      return;
+    }
+
+    String conversationText = '🌍 Travel AI Chat Conversation\n';
+    conversationText += '─' * 30 + '\n\n';
+
+    for (var message in _messages) {
+      final role = message['role'] == 'user' ? '👤 You' : '🤖 Travel AI';
+      final content = message['content'] ?? '';
+      final timestamp = (message['timestamp'] as Timestamp?)?.toDate();
+
+      conversationText += '$role';
+      if (timestamp != null) {
+        conversationText += ' (${_formatDateTime(timestamp)})';
+      }
+      conversationText += ':\n$content\n\n';
+    }
+
+    conversationText += '─' * 30 + '\n';
+    conversationText += 'Shared from Travel AI Assistant';
+
+    await Share.share(
+      conversationText,
+      subject: 'My Travel AI Chat',
+    );
+  }
+
+  // Share selected messages
+  Future<void> _shareSelectedMessages(List<int> selectedIndices) async {
+    if (selectedIndices.isEmpty) return;
+
+    String selectedText = '🌍 Travel AI Chat Excerpt\n';
+    selectedText += '─' * 30 + '\n\n';
+
+    for (int index in selectedIndices) {
+      if (index < _messages.length) {
+        final message = _messages[index];
+        final role = message['role'] == 'user' ? '👤 You' : '🤖 Travel AI';
+        final content = message['content'] ?? '';
+
+        selectedText += '$role:\n$content\n\n';
+      }
+    }
+
+    selectedText += '─' * 30 + '\n';
+    selectedText += 'Shared from Travel AI Assistant';
+
+    await Share.share(selectedText);
+  }
+
+  // Share conversation as image
+  Future<void> _shareConversationAsImage() async {
+    if (_messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No messages to share')),
+      );
+      return;
+    }
+
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        },
+      );
+
+      // Capture the conversation as image
+      final RenderRepaintBoundary boundary = _repaintBoundaryKey.currentContext!
+          .findRenderObject() as RenderRepaintBoundary;
+
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+
+      if (byteData != null) {
+        final Uint8List pngBytes = byteData.buffer.asUint8List();
+
+        // Save image to temporary directory
+        final tempDir = await getTemporaryDirectory();
+        final file = await File('${tempDir.path}/travel_chat_${DateTime.now().millisecondsSinceEpoch}.png')
+            .create();
+        await file.writeAsBytes(pngBytes);
+
+        // Close loading dialog
+        Navigator.pop(context);
+
+        // Share the image
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: '🌍 Check out my Travel AI conversation!',
+          subject: 'Travel AI Chat',
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context); // Close loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sharing image: $e')),
+      );
+    }
+  }
+
+  // Share last travel recommendation
+  Future<void> _shareLastTravelRecommendation() async {
+    // Find the last assistant message with travel content
+    Map<String, dynamic>? lastRecommendation;
+
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i]['role'] == 'assistant') {
+        final content = _messages[i]['content'] ?? '';
+        // Check if it contains travel-related content
+        if (_containsTravelContent(content)) {
+          lastRecommendation = _messages[i];
+          break;
+        }
+      }
+    }
+
+    if (lastRecommendation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No travel recommendations to share')),
+      );
+      return;
+    }
+
+    final content = lastRecommendation['content'] ?? '';
+    final shareText = '🌍 Travel Recommendation from AI Assistant:\n\n$content\n\n'
+        '─' * 30 + '\nGet personalized travel advice with Travel AI!';
+
+    await Share.share(
+      shareText,
+      subject: 'Travel Recommendation',
+    );
+  }
+
+  bool _containsTravelContent(String content) {
+    final lowerContent = content.toLowerCase();
+    return _travelKeywords.any((keyword) => lowerContent.contains(keyword));
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} '
+        '${dateTime.hour.toString().padLeft(2, '0')}:'
+        '${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  // Show share options bottom sheet
+  void _showShareOptions() {
+    setState(() {
+      _isShareMenuOpen = true;
+    });
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 5,
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Share Conversation',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _darkPurple,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.text_fields, color: _mediumPurple),
+                title: const Text('Share as Text'),
+                subtitle: const Text('Share entire conversation as text'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareConversationAsText();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.image, color: _mediumPurple),
+                title: const Text('Share as Image'),
+                subtitle: const Text('Create and share a screenshot'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareConversationAsImage();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.recommend, color: _mediumPurple),
+                title: const Text('Share Last Recommendation'),
+                subtitle: const Text('Share the latest travel advice'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareLastTravelRecommendation();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.select_all, color: _mediumPurple),
+                title: const Text('Select Messages to Share'),
+                subtitle: const Text('Choose specific messages'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showMessageSelection();
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    ).whenComplete(() {
+      setState(() {
+        _isShareMenuOpen = false;
+      });
+    });
+  }
+
+  // Show message selection dialog
+  void _showMessageSelection() {
+    List<int> selectedIndices = [];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(
+                'Select Messages to Share',
+                style: TextStyle(color: _darkPurple),
+              ),
+              content: Container(
+                width: double.maxFinite,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final message = _messages[index];
+                    final isUser = message['role'] == 'user';
+                    final content = message['content'] ?? '';
+                    final truncatedContent = content.length > 50
+                        ? '${content.substring(0, 50)}...'
+                        : content;
+
+                    return CheckboxListTile(
+                      value: selectedIndices.contains(index),
+                      onChanged: (bool? value) {
+                        setState(() {
+                          if (value == true) {
+                            selectedIndices.add(index);
+                          } else {
+                            selectedIndices.remove(index);
+                          }
+                        });
+                      },
+                      title: Text(
+                        isUser ? '👤 You' : '🤖 Travel AI',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isUser ? _darkPurple : _mediumPurple,
+                        ),
+                      ),
+                      subtitle: Text(truncatedContent),
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: selectedIndices.isEmpty
+                      ? null
+                      : () {
+                    Navigator.pop(context);
+                    _shareSelectedMessages(selectedIndices);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _darkPurple,
+                  ),
+                  child: Text(
+                    'Share (${selectedIndices.length})',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -829,6 +1316,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         elevation: 0, // No shadow for app bar
         iconTheme: IconThemeData(color: _darkPurple), // Back button color
         actions: [
+          IconButton(
+            icon: Icon(Icons.share, color: _darkPurple),
+            onPressed: _messages.isEmpty ? null : _showShareOptions,
+            tooltip: 'Share Conversation',
+          ),
           IconButton(
             icon: Icon(Icons.search, color: _darkPurple), // Toggle in-chat search
             onPressed: _toggleInChatSearch,
@@ -1074,14 +1566,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   ],
                 ),
               ),
+
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(8),
-                itemCount: _messages.length,
-                itemBuilder: (_, i) => _buildMessage(_messages[i], i), // Pass message index for highlighting
+              child: RepaintBoundary(
+                key: _repaintBoundaryKey,
+                child: Container(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(8),
+                    itemCount: _messages.length,
+                    itemBuilder: (_, i) => _buildMessage(_messages[i], i),
+                  ),
+                ),
               ),
             ),
+
             if (_isLoading)
               const Padding(
                 padding: EdgeInsets.all(8),
@@ -1101,14 +1600,16 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(
-                            color: _mediumPurple.withOpacity(0.4),
+                            // Replaced .withOpacity() with .withAlpha()
+                            color: _mediumPurple.withAlpha((255 * 0.4).round()),
                             width: 1.5,
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(
-                            color: _mediumPurple.withOpacity(0.4),
+                            // Replaced .withOpacity() with .withAlpha()
+                            color: _mediumPurple.withAlpha((255 * 0.4).round()),
                             width: 1.5,
                           ),
                         ),
@@ -1119,10 +1620,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                             width: 2.0,
                           ),
                         ),
-                        fillColor: _lightBeige.withOpacity(0.6),
+                        // Replaced .withOpacity() with .withAlpha()
+                        fillColor: _lightBeige.withAlpha((255 * 0.6).round()),
                         filled: true,
                         hintStyle: TextStyle(
-                          color: _greyText.withOpacity(0.6),
+                          // Replaced .withOpacity() with .withAlpha()
+                          color: _greyText.withAlpha((255 * 0.6).round()),
                         ),
                       ),
                       style: TextStyle(

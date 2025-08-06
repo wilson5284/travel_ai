@@ -5,6 +5,11 @@ import 'package:travel_ai/screens/my_reports_list_screen.dart';
 import 'package:travel_ai/screens/splash_screen.dart';
 import 'package:travel_ai/screens/user_management/faq_screen.dart';
 import 'admin/admin_announcement_list_screen.dart';
+import 'admin/admin_notifications_screen.dart';
+import 'admin/admin_profile_screen.dart';
+import 'admin/admin_reports_list_screen.dart';
+import 'admin/admin_screen.dart';
+import 'admin/system_health_screen.dart';
 import 'admin/user_management_screen.dart';
 import 'screens/user_management/login_screen.dart';
 import 'screens/report_screen.dart';
@@ -30,6 +35,11 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginScreen(),
         '/report': (context) => const ReportScreen(),
         '/admin/users': (context) => const UserManagementScreen(),
+        '/admin/dashboard': (context) => const AdminDashboard(),
+        '/admin/reports': (context) => const AdminReportsListScreen(),
+        '/admin/profile': (context) => const AdminProfileScreen(),
+        '/admin/notifications': (context) => const AdminNotificationsScreen(),
+        '/admin/system-health': (context) => const SystemHealthScreen(),
         '/announcements': (context) => const AllAnnouncementsScreen(),
         '/admin/announcements/manage': (context) => const AdminAnnouncementListScreen(),
         '/report/list': (context) => const MyReportsListScreen(),

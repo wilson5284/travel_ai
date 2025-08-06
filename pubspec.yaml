@@ -35,6 +35,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_app_check: ^0.3.2+10
   url_launcher: ^6.2.5
+  share_plus: ^11.0.0
+  screenshot: ^2.1.0
 
 flutter_icons:
   android: true

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
-import '../screens/chatbot_screen.dart';
+import '../screens/chatbot/chatbot_screen.dart';
 import '../screens/dynamic_itinerary/itinerary_screen.dart';
+import '../screens/trip_timeline_screen.dart';
 import '../screens/user_management/profile_screen.dart';
 
 class BottomNavBar extends StatelessWidget {
@@ -48,6 +49,15 @@ class BottomNavBar extends StatelessWidget {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
+            pageBuilder: (context, animation1, animation2) => const TripTimelineScreen(),
+            transitionDuration: Duration.zero,
+          ),
+        );
+        break;
+        case 4:
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
             pageBuilder: (context, animation1, animation2) => const ProfileScreen(),
             transitionDuration: Duration.zero,
           ),
@@ -63,7 +73,7 @@ class BottomNavBar extends StatelessWidget {
         color: _white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.15),
+            color: Colors.grey.withValues(alpha:0.15),
             spreadRadius: 0,
             blurRadius: 10,
             offset: const Offset(0, -4),
@@ -115,6 +125,10 @@ class BottomNavBar extends StatelessWidget {
             BottomNavigationBarItem(
               icon: Icon(Icons.chat_bubble),
               label: 'Chatbot',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.notifications),
+              label: 'Notifications',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person),

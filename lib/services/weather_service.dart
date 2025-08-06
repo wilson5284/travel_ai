@@ -1,78 +1,141 @@
-// lib/network/weather_service.dart
+// lib/services/weather_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart'; // <--- ADD THIS IMPORT
-import '../constants/api_constants.dart'; // Import your API constants
+import 'package:intl/intl.dart';
 
 class WeatherService {
-  final String _apiKey = ApiConstants.openWeatherApiKey;
-  final String _baseUrl = "http://api.openweathermap.org/data/2.5/forecast"; // 5-day / 3-hour forecast
+  // 🔑 ADD YOUR WEATHERAPI.COM API KEY HERE
+  final String _apiKey = 'f3aa98d0acef45b183590756250408';
 
-  // Fetches weather forecast for a given city
-  Future<Map<String, dynamic>> getWeatherForecast(String city) async {
+  Future<Map<String, dynamic>> getWeatherForecast(String location) async {
+    // Check if API key is configured
+    if (_apiKey == 'PUT_YOUR_WEATHERAPI_KEY_HERE' || _apiKey.isEmpty) {
+      return {
+        'error': 'Weather API key not configured. Please add your WeatherAPI.com API key.'
+      };
+    }
+
     try {
-      final response = await http.get(Uri.parse('$_baseUrl?q=$city&appid=$_apiKey&units=metric'));
+      // Clean location name
+      final cleanLocation = location.trim();
+      if (cleanLocation.isEmpty) {
+        return {'error': 'Location cannot be empty'};
+      }
+
+      // Build URL using Uri.https for proper encoding
+      final uri = Uri.https(
+          'api.weatherapi.com',
+          '/v1/forecast.json',
+          {
+            'key': _apiKey,
+            'q': cleanLocation,
+            'days': '10',
+            'aqi': 'no',
+            'alerts': 'no'
+          }
+      );
+
+      print('🌤️ Weather API URL: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TravelApp/1.0',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      print('🌤️ Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        // Validate response has forecast data
+        if (data.containsKey('forecast') &&
+            data['forecast'] != null &&
+            data['forecast']['forecastday'] != null) {
+          print('✅ Weather data loaded for $location');
+          return data;
+        } else {
+          return {'error': 'Invalid weather data structure'};
+        }
       } else {
-        // Handle API errors (e.g., city not found, invalid API key)
-        final errorBody = json.decode(response.body);
-        print("Weather API Error: ${response.statusCode} - ${errorBody['message']}");
-        return {'error': 'Failed to load weather data: ${errorBody['message'] ?? 'Unknown error'}'};
+        // Handle API errors
+        String errorMsg = 'Weather API error (${response.statusCode})';
+        try {
+          final errorData = json.decode(response.body);
+          errorMsg = errorData['error']?['message'] ?? errorMsg;
+        } catch (e) {
+          // Use default error message
+        }
+
+        return {'error': errorMsg};
       }
     } catch (e) {
-      print("Network or parsing error in WeatherService: $e");
-      return {'error': 'Network or data parsing error: $e'};
+      print('❌ Weather error: $e');
+      return {'error': 'Failed to load weather: ${e.toString()}'};
     }
   }
 
-  // Checks for potentially "bad" weather conditions
-  // This is a simplified check. You might want to define "bad weather" more strictly.
+  // Simple check for bad weather (used during itinerary generation)
   bool hasBadWeather(Map<String, dynamic> weatherData) {
-    if (weatherData.containsKey('error')) {
-      return false; // Cannot determine if there's an error
-    }
+    try {
+      if (weatherData.containsKey('forecast') &&
+          weatherData['forecast']['forecastday'] != null) {
 
-    final List<dynamic> forecasts = weatherData['list'];
-    for (var forecast in forecasts) {
-      final int weatherId = forecast['weather'][0]['id'];
-      // OpenWeatherMap weather condition codes:
-      // 2xx: Thunderstorm
-      // 3xx: Drizzle
-      // 5xx: Rain
-      // 6xx: Snow
-      // 7xx: Atmosphere (Mist, Smoke, Haze, Dust, Fog, Sand, Ash, Squall, Tornado) - some might be "bad"
-      // 80x: Clouds (803, 804 might indicate heavy overcast)
+        final List<dynamic> forecastDays = weatherData['forecast']['forecastday'];
 
-      if (weatherId >= 200 && weatherId < 700) { // Thunderstorm, Drizzle, Rain, Snow
-        return true;
+        for (var day in forecastDays) {
+          final condition = day['day']?['condition']?['text']?.toString().toLowerCase() ?? '';
+          if (condition.contains('rain') || condition.contains('storm')) {
+            return true;
+          }
+        }
       }
-      if (weatherId == 701 || weatherId == 741) { // Mist or Fog
-        return true;
-      }
-      if (weatherId == 803 || weatherId == 804) { // Broken clouds or Overcast clouds (can be a reminder)
-        // return true; // You can uncomment this if heavy clouds are considered "bad"
-      }
+      return false;
+    } catch (e) {
+      return false;
     }
-    return false;
   }
 
-  // Gets the weather description for a specific date (approximate)
-  // This is a simplified lookup for a date range, as OpenWeatherMap provides 3-hour forecasts.
-  String? getWeatherForDate(Map<String, dynamic> weatherData, String dateStr) {
-    if (weatherData.containsKey('error')) return null;
+  // Get weather description for date range (used during itinerary generation)
+  String getWeatherDescriptionForDateRange(Map<String, dynamic> weatherData, DateTime startDate, DateTime endDate) {
+    try {
+      if (weatherData.containsKey('forecast') &&
+          weatherData['forecast']['forecastday'] != null) {
 
-    final List forecasts = weatherData['list'];
-    for (var forecast in forecasts) {
-      final dateTime = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000).toLocal();
-      final String forecastDate = DateFormat('yyyy-MM-dd').format(dateTime);
-      if (forecastDate == dateStr) {
-        final description = forecast['weather'][0]['description'];
-        final temp = forecast['main']['temp'];
-        return "$description, ${temp.toStringAsFixed(1)}°C";
+        final List<dynamic> forecastDays = weatherData['forecast']['forecastday'];
+        final DateFormat apiDateFormat = DateFormat('yyyy-MM-dd');
+
+        final List<String> conditions = [];
+
+        for (var day in forecastDays) {
+          if (day['date'] != null) {
+            try {
+              final DateTime forecastDate = apiDateFormat.parse(day['date']);
+
+              if (forecastDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+                  forecastDate.isBefore(endDate.add(const Duration(days: 1)))) {
+
+                final condition = day['day']?['condition']?['text'];
+                if (condition != null) {
+                  conditions.add(condition);
+                }
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+        }
+
+        if (conditions.isNotEmpty) {
+          return conditions.first; // Return most common or first condition
+        }
       }
+
+      return "Weather data unavailable";
+    } catch (e) {
+      return "Unable to process weather data";
     }
-    return null;
   }
 }

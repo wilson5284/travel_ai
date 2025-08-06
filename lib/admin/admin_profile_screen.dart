@@ -1,27 +1,36 @@
-// lib/screens/profile_screen.dart
+// lib//admin/admin_profile_screen.dart - UPDATED WITH REAL ADMIN FEATURES
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
-import '../../db/user_service.dart'; // Assuming you have this service
-import '../../model/user_model.dart'; // Assuming you have this model
-import '../../widgets/bottom_nav_bar.dart'; // Assuming you have this widget
-import 'edit_screen.dart'; // For Edit Profile Screen
-import 'login_screen.dart'; // For logout navigation
+import '../../db/user_service.dart';
+import '../../model/user_model.dart';
+import '../../widgets/admin_bottom_nav_bar.dart';
+import '../screens/user_management/edit_screen.dart';
+import '../screens/user_management/login_screen.dart';
+import 'banner_management_screen.dart';
+import 'banner_analytics_screen.dart';
+import 'system_health_screen.dart';
 
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+class AdminProfileScreen extends StatefulWidget {
+  const AdminProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<AdminProfileScreen> createState() => _AdminProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _AdminProfileScreenState extends State<AdminProfileScreen> {
   final UserService _userService = UserService();
   UserModel? _userModel;
   bool _isLoading = true;
   String? _errorMessage;
 
-  // Consistent Color Scheme
+  // Report counts - Updated with banner data
+  int _pendingReportsCount = 0;
+  int _totalUsersCount = 0;
+  int _announcementsCount = 0;
+  int _activeBannersCount = 0;
+
+  // Consistent Color Scheme (matching user profile)
   final Color _white = Colors.white;
   final Color _offWhite = const Color(0xFFF5F5F5);
   final Color _darkPurple = const Color(0xFF6A1B9A);
@@ -31,11 +40,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color _gradientStart = const Color(0xFFF3E5F5);
   final Color _gradientEnd = const Color(0xFFFFF5E6);
 
-
   @override
   void initState() {
     super.initState();
     _fetchUserData();
+    _fetchAdminStats();
   }
 
   Future<void> _fetchUserData() async {
@@ -50,29 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final uid = fbUser.uid;
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (!doc.exists) {
-        // Create a basic user document if it doesn't exist
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'uid': uid,
-          'username': fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
-          'email': fbUser.email ?? '',
-          'preferredLanguage': 'English',
-          'preferredCurrency': 'USD',
-          'country': '',
-          'phone': '',
-          'gender': '',
-          'dob': '',
-          'createdAt': FieldValue.serverTimestamp(),
-          'role': 'user',
-          'avatarUrl': null, // Default to null for avatar
-        });
-        // Re-fetch after creation to get the newly created data
-        final updatedDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-        setState(() {
-          _userModel = UserModel.fromMap(updatedDoc.data()!);
-          _isLoading = false;
-        });
-      } else {
+      if (doc.exists) {
         setState(() {
           _userModel = UserModel.fromMap(doc.data()!);
           _isLoading = false;
@@ -86,44 +73,135 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _fetchAdminStats() async {
+    try {
+      // Fetch pending reports count
+      final reportsSnapshot = await FirebaseFirestore.instance
+          .collection('reports')
+          .where('status', isEqualTo: 'pending')
+          .count()
+          .get();
+
+      // Fetch total users count
+      final usersSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .count()
+          .get();
+
+      // Fetch announcements count
+      final announcementsSnapshot = await FirebaseFirestore.instance
+          .collection('announcements')
+          .count()
+          .get();
+
+      // Fetch active banners count
+      final bannersSnapshot = await FirebaseFirestore.instance
+          .collection('ad_banners')
+          .where('isActive', isEqualTo: true)
+          .count()
+          .get();
+
+      setState(() {
+        _pendingReportsCount = reportsSnapshot.count ?? 0;
+        _totalUsersCount = usersSnapshot.count ?? 0;
+        _announcementsCount = announcementsSnapshot.count ?? 0;
+        _activeBannersCount = bannersSnapshot.count ?? 0;
+      });
+    } catch (e) {
+      print('Error fetching admin stats: $e');
+    }
+  }
+
   Future<void> _refreshProfile() async {
     setState(() => _isLoading = true);
     await _fetchUserData();
+    await _fetchAdminStats();
   }
 
-  // Widget for common dashboard/profile items
-  Widget _buildProfileItem(
+  Widget _buildStatCard({
+    required String title,
+    required String count,
+    required IconData icon,
+    required Color iconColor,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        elevation: 5,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+        shadowColor: _mediumPurple.withValues(alpha: 0.2),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_white, _lightPurple.withValues(alpha: 0.5)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(icon, size: 32, color: iconColor),
+              const SizedBox(height: 8),
+              Text(
+                count,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: _darkPurple,
+                ),
+              ),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _greyText,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminOption(
       BuildContext context, {
         required String title,
         required IconData icon,
         String? subtitle,
-        Widget? trailingWidget, // Changed to Widget for more flexibility
+        Widget? trailingWidget,
         VoidCallback? onTap,
-        Color iconColor = Colors.black, // Default, will be overridden by theme colors
+        Color iconColor = Colors.black,
       }) {
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 24.0), // Consistent padding
-      elevation: 5, // Consistent shadow
+      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 24.0),
+      elevation: 5,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15), // Consistent card rounding
+        borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: _mediumPurple.withOpacity(0.2), // Consistent shadow color
+      shadowColor: _mediumPurple.withValues(alpha: 0.2),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [_offWhite, _lightPurple], // Lighter gradient for card background
+            colors: [_offWhite, _lightPurple],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(15),
         ),
-        child: Material( // For InkWell ripple effect
+        child: Material(
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(15),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0), // More padding
+              padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
               child: Row(
                 children: [
                   Icon(icon, color: iconColor, size: 28),
@@ -151,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   if (trailingWidget != null) trailingWidget,
-                  if (trailingWidget == null) Icon(Icons.arrow_forward_ios, size: 20, color: _mediumPurple.withOpacity(0.7)),
+                  if (trailingWidget == null) Icon(Icons.arrow_forward_ios, size: 20, color: _mediumPurple.withValues(alpha: 0.7)),
                 ],
               ),
             ),
@@ -178,11 +256,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
+
     if (_errorMessage != null) {
       return Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: Text('User Profile', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
+          title: Text('Admin Profile', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
           backgroundColor: _white,
           foregroundColor: _darkPurple,
           elevation: 0,
@@ -196,13 +275,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Error: $_errorMessage',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.red.shade700, fontSize: 16),
-              ),
+            child: Text(
+              'Error: $_errorMessage',
+              style: TextStyle(color: Colors.red.shade700, fontSize: 16),
             ),
           ),
         ),
@@ -210,14 +285,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent, // Set to transparent for gradient
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text('Your Profile', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
+        title: Text('Admin Profile', style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: _white,
         foregroundColor: _darkPurple,
-        elevation: 0, // Remove shadow
-        bottom: PreferredSize( // Add a thin bottom border for separation
+        elevation: 0,
+        bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
           child: Container(
             color: Colors.grey.shade200,
@@ -235,29 +310,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         child: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch, // Stretch for header
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header with Profile Info (Clickable to EditProfileScreen)
+              // Header with Admin Info
               GestureDetector(
                 onTap: () async {
                   await Navigator.push(
                       context,
                       MaterialPageRoute(
                           builder: (_) => EditProfileScreen(user: _userModel!)));
-                  _refreshProfile(); // Refresh data after editing
+                  _refreshProfile();
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 30.0, horizontal: 20.0), // Increased padding
+                  padding: const EdgeInsets.symmetric(vertical: 30.0, horizontal: 20.0),
                   decoration: BoxDecoration(
-                    color: _white, // White background for the header
+                    color: _white,
                     borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(30), // More prominent curve
+                      bottomLeft: Radius.circular(30),
                       bottomRight: Radius.circular(30),
                     ),
-                    boxShadow: [ // Add shadow for depth
+                    boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey.withValues(alpha: 0.1),
                         spreadRadius: 2,
                         blurRadius: 10,
                         offset: const Offset(0, 5),
@@ -266,47 +341,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Column(
                     children: [
-                      Container( // Avatar border
+                      Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
-                            colors: [_mediumPurple, _darkPurple], // Purple border
+                            colors: [_mediumPurple, _darkPurple],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                         ),
                         child: CircleAvatar(
-                          radius: 50, // Slightly larger avatar
-                          backgroundColor: _lightPurple, // Fallback background
+                          radius: 50,
+                          backgroundColor: _lightPurple,
                           backgroundImage: _userModel?.avatarUrl != null && _userModel!.avatarUrl!.isNotEmpty
                               ? NetworkImage(_userModel!.avatarUrl!)
                               : null,
                           child: _userModel?.avatarUrl == null || _userModel!.avatarUrl!.isEmpty
-                              ? Icon(Icons.person, size: 50, color: _mediumPurple) // Purple icon
+                              ? Icon(Icons.admin_panel_settings, size: 50, color: _mediumPurple)
                               : null,
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        _userModel?.username ?? 'Traveler Name',
+                        _userModel?.username ?? 'Admin',
                         style: TextStyle(
                             fontSize: 24, fontWeight: FontWeight.bold, color: _darkPurple),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _userModel?.email ?? 'user@example.com',
+                        _userModel?.email ?? 'admin@example.com',
                         style: TextStyle(fontSize: 16, color: _greyText),
                       ),
-                      if (_userModel?.country != null && _userModel!.country!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          _userModel!.country!,
-                          style: TextStyle(fontSize: 15, color: _greyText.withOpacity(0.8)),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _darkPurple,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      ],
+                        child: Text(
+                          'ADMINISTRATOR',
+                          style: TextStyle(color: _white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                       const SizedBox(height: 10),
-                      // Edit Profile Button (Optional, as header is clickable)
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -317,7 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: _mediumPurple.withOpacity(0.2),
+                              color: _mediumPurple.withValues(alpha: 0.2),
                               spreadRadius: 1,
                               blurRadius: 8,
                               offset: const Offset(0, 4),
@@ -349,100 +428,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
-              // Announcement with Badge
-              _buildProfileItem(
-                context,
-                title: 'Announcements',
-                icon: Icons.notifications,
-                iconColor: Colors.blueAccent, // Distinct color
-                trailingWidget: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '34', // Example, fetch actual count
-                    style: TextStyle(color: _white, fontSize: 13, fontWeight: FontWeight.bold),
+              // Admin Statistics - Updated with banner stats
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text(
+                  'Dashboard Overview',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _darkPurple,
                   ),
                 ),
-                onTap: () {
-                  // Ensure this route is defined in your main app
-                  Navigator.pushNamed(context, '/announcements');
-                },
               ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(
+                        title: 'Pending\nReports',
+                        count: _pendingReportsCount.toString(),
+                        icon: Icons.report_problem,
+                        iconColor: Colors.orange,
+                        onTap: () => Navigator.pushNamed(context, '/admin/reports'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildStatCard(
+                        title: 'Total\nUsers',
+                        count: _totalUsersCount.toString(),
+                        icon: Icons.people,
+                        iconColor: Colors.blue,
+                        onTap: () => Navigator.pushNamed(context, '/admin/users'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildStatCard(
+                        title: 'Active\nBanners',
+                        count: _activeBannersCount.toString(),
+                        icon: Icons.ad_units,
+                        iconColor: Colors.purple,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const BannerManagementScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
 
-              _buildProfileItem(
+              // Admin Management Options - Only System Health
+              _buildAdminOption(
                 context,
-                title: 'FAQ',
-                icon: Icons.question_mark_sharp,
-                iconColor: Colors.red, // Distinct color
+                title: 'System Health',
+                icon: Icons.health_and_safety,
+                iconColor: Colors.green,
                 onTap: () {
-                  Navigator.pushNamed(context, '/faq');
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'Preferences & Settings',
-                icon: Icons.settings,
-                iconColor: _darkPurple, // Primary purple
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Preferences not implemented.', style: TextStyle(color: _white)), backgroundColor: _mediumPurple),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SystemHealthScreen(),
+                    ),
                   );
                 },
               ),
-              _buildProfileItem(
-                context,
-                title: 'Help & Support',
-                icon: Icons.help_outline,
-                iconColor: Colors.blueGrey, // Distinct color
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Help & Support not implemented.', style: TextStyle(color: _white)), backgroundColor: _mediumPurple),
-                  );
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'Report an Issue',
-                icon: Icons.report_problem,
-                iconColor: Colors.redAccent, // Red for warning/issue
-                onTap: () {
-                  Navigator.pushNamed(context, '/report');
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'View My Reports',
-                icon: Icons.message_outlined,
-                iconColor: Colors.lightBlue, // Distinct color
-                onTap: () {
-                  Navigator.pushNamed(context, '/report/list');
-                },
-              ),
-              const SizedBox(height: 20), // Spacing before logout
-              _buildProfileItem(
+              const SizedBox(height: 20),
+              _buildAdminOption(
                 context,
                 title: 'Logout',
                 icon: Icons.logout,
-                iconColor: Colors.grey.shade700, // Slightly darker grey for logout
+                iconColor: Colors.grey.shade700,
                 onTap: () async {
                   await _userService.signOut();
                   if (context.mounted) {
-                    Navigator.pushAndRemoveUntil( // Use pushAndRemoveUntil to clear navigation stack
+                    Navigator.pushAndRemoveUntil(
                         context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
                   }
                 },
               ),
-              const SizedBox(height: 30), // Increased spacing at bottom
+              const SizedBox(height: 30),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 4), // Adjust as per your NavBar
+      bottomNavigationBar: const AdminBottomNavBar(currentIndex: 3),
     );
   }
 }
