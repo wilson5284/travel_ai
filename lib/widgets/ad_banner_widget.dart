@@ -1,4 +1,4 @@
-// lib/widgets/ad_banner_widget.dart - MATCHES YOUR EXISTING IMPORT
+// lib/widgets/ad_banner_widget.dart - FIXED VERSION WITH PROPER CLICK HANDLING
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,6 +33,7 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
 
   Future<void> _loadBanner() async {
     try {
+      print('🔍 Loading banner for position: ${widget.position}');
       final querySnapshot = await FirebaseFirestore.instance
           .collection('ad_banners')
           .where('position', isEqualTo: widget.position)
@@ -46,18 +47,20 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
           _isLoading = false;
         });
 
+        print('✅ Banner loaded for position: ${widget.position}');
         // Track impression when banner loads and becomes visible
         _trackImpression();
       } else {
         setState(() {
           _isLoading = false;
         });
+        print('❌ No active banner found for position: ${widget.position}');
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      print('Error loading banner: $e');
+      print('❌ Error loading banner: $e');
     }
   }
 
@@ -76,12 +79,12 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
           'lastImpression': now,
         });
 
-        // Log detailed analytics for tracking
+        // FIXED: Use consistent field name 'type' instead of 'action'
         await FirebaseFirestore.instance
             .collection('banner_analytics')
             .add({
           'bannerId': _activeBanner!.id,
-          'type': 'impression',
+          'type': 'impression', // FIXED: Changed from 'action' to 'type'
           'timestamp': now,
           'position': widget.position,
           'userId': currentUser?.uid,
@@ -102,6 +105,8 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
         final currentUser = FirebaseAuth.instance.currentUser;
         final now = Timestamp.now();
 
+        print('🖱️ Tracking click for banner: ${_activeBanner!.id}');
+
         // Update banner click count
         await FirebaseFirestore.instance
             .collection('ad_banners')
@@ -111,12 +116,12 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
           'lastClick': now,
         });
 
-        // Log detailed analytics for tracking
+        // FIXED: Use consistent field name 'type' instead of 'action'
         await FirebaseFirestore.instance
             .collection('banner_analytics')
             .add({
           'bannerId': _activeBanner!.id,
-          'type': 'click',
+          'type': 'click', // FIXED: Changed from 'action' to 'type'
           'timestamp': now,
           'position': widget.position,
           'userId': currentUser?.uid,
@@ -131,19 +136,105 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
   }
 
   Future<void> _handleBannerTap(String actionUrl) async {
+    print('🎯 Banner tapped! URL: $actionUrl');
+
+    // Show user feedback immediately
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opening advertisement...'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
     // Track the click first
     await _trackClick();
 
-    // Then open the URL
+    // Enhanced URL handling with multiple fallback options
+    await _openUrl(actionUrl);
+  }
+
+  Future<void> _openUrl(String url) async {
     try {
-      final uri = Uri.parse(actionUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        print('Cannot launch URL: $actionUrl');
+      // Clean and validate the URL
+      String cleanUrl = url.trim();
+
+      // Add https:// if no protocol is specified
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://$cleanUrl';
+        print('🔧 Added https:// to URL: $cleanUrl');
       }
+
+      final uri = Uri.parse(cleanUrl);
+      print('🌐 Attempting to launch URL: $cleanUrl');
+
+      // Validate the URL format
+      if (!uri.hasScheme || uri.host.isEmpty) {
+        print('❌ Invalid URL format: $cleanUrl');
+        _showErrorSnackBar('Invalid link format');
+        return;
+      }
+
+      // Try multiple launch modes in order of preference
+      final launchModes = [
+        LaunchMode.externalApplication,
+        LaunchMode.externalNonBrowserApplication,
+        LaunchMode.platformDefault,
+      ];
+
+      bool launched = false;
+
+      for (final mode in launchModes) {
+        try {
+          print('🚀 Trying launch mode: $mode');
+
+          if (await canLaunchUrl(uri)) {
+            launched = await launchUrl(uri, mode: mode);
+
+            if (launched) {
+              print('✅ URL launched successfully with mode: $mode');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Link opened successfully!'),
+                    backgroundColor: Colors.green,
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              }
+              break;
+            }
+          }
+        } catch (e) {
+          print('❌ Failed with mode $mode: $e');
+          continue;
+        }
+      }
+
+      if (!launched) {
+        print('❌ All launch methods failed for URL: $cleanUrl');
+        _showErrorSnackBar('Cannot open this link. Please check your device settings.');
+      }
+
     } catch (e) {
-      print('Error opening URL: $e');
+      print('❌ Error parsing/opening URL: $e');
+      _showErrorSnackBar('Invalid link format: ${e.toString()}');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -153,6 +244,10 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
       return Container(
         height: widget.height ?? 100,
         margin: widget.margin ?? const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: const Center(
           child: SizedBox(
             width: 20,
@@ -177,186 +272,213 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
     return Container(
       height: widget.height ?? 100,
       margin: widget.margin ?? const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      child: Card(
+      child: Material(
         elevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
+        borderRadius: BorderRadius.circular(15),
         shadowColor: Colors.purple.withValues(alpha: 0.2),
         child: InkWell(
           borderRadius: BorderRadius.circular(15),
-          onTap: actionUrl.isNotEmpty ? () => _handleBannerTap(actionUrl) : null,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: Stack(
-              children: [
-                // Banner Image
-                Positioned.fill(
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
+          onTap: actionUrl.isNotEmpty ? () {
+            print('🎯 InkWell tapped for banner: $title');
+            _handleBannerTap(actionUrl);
+          } : null,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: Colors.purple.withValues(alpha: 0.2),
+                width: 1,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Stack(
+                children: [
+                  // Banner Image
+                  Positioned.fill(
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.purple.shade100,
+                                Colors.purple.shade50,
+                              ],
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.ad_units,
+                                  color: Colors.purple.shade300, size: 32),
+                              const SizedBox(height: 4),
+                              Text(
+                                title.isNotEmpty ? title : 'Advertisement',
+                                style: TextStyle(
+                                  color: Colors.purple.shade600,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (description.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  description,
+                                  style: TextStyle(
+                                    color: Colors.purple.shade400,
+                                    fontSize: 12,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.grey.shade100,
+                                Colors.grey.shade50,
+                              ],
+                            ),
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                                  : null,
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.purple.shade300),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // Overlay with text (if banner has content)
+                  if (title.isNotEmpty || description.isNotEmpty)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
                             colors: [
-                              Colors.purple.shade100,
-                              Colors.purple.shade50,
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.8),
                             ],
                           ),
                         ),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.ad_units,
-                                color: Colors.purple.shade300, size: 32),
-                            const SizedBox(height: 4),
-                            Text(
-                              title.isNotEmpty ? title : 'Advertisement',
-                              style: TextStyle(
-                                color: Colors.purple.shade600,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                            if (title.isNotEmpty)
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
                             if (description.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Text(
                                 description,
-                                style: TextStyle(
-                                  color: Colors.purple.shade400,
-                                  fontSize: 12,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
                                 ),
-                                textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ],
                         ),
-                      );
-                    },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.grey.shade100,
-                              Colors.grey.shade50,
-                            ],
-                          ),
-                        ),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                                : null,
-                            strokeWidth: 3,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.purple.shade300),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
 
-                // Overlay with text (if banner has content)
-                if (title.isNotEmpty || description.isNotEmpty)
+                  // "Ad" indicator in top-right corner
                   Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.8),
-                          ],
-                        ),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (title.isNotEmpty)
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          if (description.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              description,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // "Ad" indicator in top-right corner
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Ad',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Tap indicator - subtle visual feedback
-                if (actionUrl.isNotEmpty)
-                  Positioned(
-                    bottom: 8,
+                    top: 8,
                     right: 8,
                     child: Container(
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Icon(
-                        Icons.open_in_new,
-                        size: 14,
-                        color: Colors.purple.shade600,
+                      child: const Text(
+                        'Ad',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-              ],
+
+                  // Tap indicator - subtle visual feedback
+                  if (actionUrl.isNotEmpty)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.open_in_new,
+                          size: 14,
+                          color: Colors.purple.shade600,
+                        ),
+                      ),
+                    ),
+
+                  // ADDED: Full overlay to ensure clicks are captured
+                  if (actionUrl.isNotEmpty)
+                    Positioned.fill(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(15),
+                          onTap: () {
+                            print('🎯 Overlay tapped for banner: $title');
+                            _handleBannerTap(actionUrl);
+                          },
+                          splashColor: Colors.white.withValues(alpha: 0.2),
+                          highlightColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

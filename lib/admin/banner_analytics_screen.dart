@@ -1,4 +1,4 @@
-// lib/admin/banner_analytics_screen.dart - NEW FILE FOR VIEWING ANALYTICS
+// lib/admin/banner_analytics_screen.dart - FIXED VERSION WITH PROPER FIELD NAMES
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -225,7 +225,8 @@ class _BannerAnalyticsScreenState extends State<BannerAnalyticsScreen> {
 
                       for (var doc in analyticsData) {
                         final data = doc.data() as Map<String, dynamic>;
-                        final type = data['type'];
+                        // FIXED: Use 'type' field instead of 'action'
+                        final type = data['type']; // Changed from data['action']
                         final position = data['position'] ?? 'unknown';
                         final bannerId = data['bannerId'];
 
@@ -398,6 +399,50 @@ class _BannerAnalyticsScreenState extends State<BannerAnalyticsScreen> {
                                 ),
                               );
                             }).toList(),
+
+                            // Debug section - Show recent analytics data
+                            const SizedBox(height: 32),
+                            Text(
+                              'Recent Analytics Data (Debug)',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Last 10 analytics events:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...analyticsData.take(10).map((doc) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final type = data['type'] ?? 'unknown';
+                                    final position = data['position'] ?? 'unknown';
+                                    final timestamp = data['timestamp'] as Timestamp?;
+                                    final time = timestamp?.toDate() ?? DateTime.now();
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2),
+                                      child: Text(
+                                        '${DateFormat('MM/dd HH:mm').format(time)} - $type ($position)',
+                                        style: TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       );

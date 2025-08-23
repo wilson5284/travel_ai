@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../services/gemini_service.dart';
 import '../../services/weather_service.dart';
@@ -20,7 +21,9 @@ class ItineraryScreen extends StatefulWidget {
 class _ItineraryScreen extends State<ItineraryScreen> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
-  final TextEditingController _interestsController = TextEditingController(); // Added interests controller
+  final TextEditingController _interestsController = TextEditingController();
+  final TextEditingController _accommodationController = TextEditingController();
+  final TextEditingController _transportController = TextEditingController();
 
   DateTime? _departDay;
   DateTime? _returnDay;
@@ -28,10 +31,41 @@ class _ItineraryScreen extends State<ItineraryScreen> {
   TimeOfDay? _returnTime;
 
   bool isLoading = false;
-  bool isFormVisible = false; // Form is hidden by default
+  bool isFormVisible = false;
+
+  // Travel pace preference
+  String _travelPace = 'moderate';
+
+  // Meal preferences
+  List<String> _mealPreferences = [];
+
+  // Activity preferences with categories
+  Map<String, List<String>> _selectedInterests = {
+    'Culture & History': [],
+    'Food & Dining': [],
+    'Shopping': [],
+    'Nature & Outdoors': [],
+    'Entertainment': [],
+    'Adventure & Sports': [],
+    'Wellness & Relaxation': [],
+    'Nightlife': [],
+  };
+
+  // Predefined interest options
+  final Map<String, List<String>> _interestOptions = {
+    'Culture & History': ['Museums', 'Temples', 'Historical Sites', 'Art Galleries', 'Cultural Shows', 'Local Traditions'],
+    'Food & Dining': ['Street Food', 'Fine Dining', 'Local Cuisine', 'Cafes', 'Food Markets', 'Cooking Classes'],
+    'Shopping': ['Local Markets', 'Fashion Streets', 'Malls', 'Vintage Shops', 'Souvenirs', 'Designer Brands'],
+    'Nature & Outdoors': ['Beaches', 'Mountains', 'Parks', 'Gardens', 'Hiking', 'Wildlife'],
+    'Entertainment': ['Theme Parks', 'Shows', 'Concerts', 'Festivals', 'Movies', 'Sports Events'],
+    'Adventure & Sports': ['Water Sports', 'Extreme Sports', 'Rock Climbing', 'Diving', 'Cycling', 'Zip-lining'],
+    'Wellness & Relaxation': ['Spa', 'Yoga', 'Meditation', 'Hot Springs', 'Massage', 'Wellness Retreats'],
+    'Nightlife': ['Bars', 'Clubs', 'Night Markets', 'Rooftop Lounges', 'Live Music', 'Pub Crawls'],
+  };
 
   final WeatherService _weatherService = WeatherService();
   final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Color scheme
   final Color _white = Colors.white;
@@ -43,6 +77,8 @@ class _ItineraryScreen extends State<ItineraryScreen> {
   final Color _mediumPurple = const Color(0xFF9C27B0);
   final Color _lightPurple = const Color(0xFFF3E5F5);
   final Color _greyText = Colors.grey.shade600;
+
+  User? get currentUser => _auth.currentUser;
 
   bool get _isFormFilled {
     return _locationController.text.isNotEmpty &&
@@ -57,10 +93,10 @@ class _ItineraryScreen extends State<ItineraryScreen> {
   @override
   void initState() {
     super.initState();
-    isFormVisible = false; // Form hidden by default
+    isFormVisible = false;
   }
 
-  // --- Date Picker Logic ---
+  // Date Picker Logic
   Future<void> _selectDate(BuildContext context, bool isDepartDate) async {
     final DateTime now = DateTime.now();
     final DateTime? pickedDate = await showDatePicker(
@@ -68,7 +104,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
       initialDate: isDepartDate
           ? (_departDay ?? now)
           : (_returnDay ?? (_departDay ?? now)),
-      firstDate: now.subtract(const Duration(days: 0)), // Disable past dates
+      firstDate: now.subtract(const Duration(days: 0)),
       lastDate: DateTime(now.year + 5),
       builder: (context, child) {
         return Theme(
@@ -93,12 +129,10 @@ class _ItineraryScreen extends State<ItineraryScreen> {
       setState(() {
         if (isDepartDate) {
           _departDay = pickedDate;
-          // Ensure return date is not before departure date
           if (_returnDay != null && _returnDay!.isBefore(_departDay!)) {
             _returnDay = _departDay;
           }
         } else {
-          // Ensure return date is not before departure date
           if (_departDay != null && pickedDate.isBefore(_departDay!)) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -118,7 +152,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     }
   }
 
-  // --- Time Picker Logic ---
+  // Time Picker Logic
   Future<void> _selectTime(BuildContext context, bool isDepartTime) async {
     final TimeOfDay now = TimeOfDay.now();
     final TimeOfDay? pickedTime = await showTimePicker(
@@ -157,7 +191,6 @@ class _ItineraryScreen extends State<ItineraryScreen> {
 
   void _validateTimesIfSameDay() {
     if (_departDay != null && _returnDay != null && _departTime != null && _returnTime != null) {
-      // Check if the departure date is the current day
       final now = DateTime.now();
       if (_departDay!.year == now.year && _departDay!.month == now.month && _departDay!.day == now.day) {
         if (_departTime!.hour < now.hour || (_departTime!.hour == now.hour && _departTime!.minute < now.minute)) {
@@ -170,10 +203,9 @@ class _ItineraryScreen extends State<ItineraryScreen> {
               backgroundColor: Colors.redAccent,
             ),
           );
-          _departTime = TimeOfDay.now(); // Reset to current time
+          _departTime = TimeOfDay.now();
         }
       }
-      // Check if return time is before departure time on the same day
       if (_departDay!.year == _returnDay!.year &&
           _departDay!.month == _returnDay!.month &&
           _departDay!.day == _returnDay!.day) {
@@ -193,12 +225,48 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     }
   }
 
-  // --- Itinerary Generation Logic ---
+  // Get formatted preferences string
+  String _getFormattedPreferences() {
+    List<String> allPreferences = [];
+
+    // Add selected interests
+    _selectedInterests.forEach((category, items) {
+      if (items.isNotEmpty) {
+        allPreferences.addAll(items);
+      }
+    });
+
+    // Add custom interests from text field
+    if (_interestsController.text.isNotEmpty) {
+      allPreferences.add(_interestsController.text);
+    }
+
+    // Add meal preferences
+    if (_mealPreferences.isNotEmpty) {
+      allPreferences.addAll(_mealPreferences.map((meal) => 'Food: $meal'));
+    }
+
+    return allPreferences.join(', ');
+  }
+
+  // Generate Itinerary
   void _generateItinerary() async {
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please log in to generate itineraries.', style: TextStyle(color: _white)),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
     if (!_isFormFilled) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please fill in all fields correctly.', style: TextStyle(color: _white)),
+          content: Text('Please fill in all required fields.', style: TextStyle(color: _white)),
           backgroundColor: _mediumPurple,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -228,32 +296,14 @@ class _ItineraryScreen extends State<ItineraryScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
-        _showWeatherReminderDialog(location, "Weather data could not be fetched due to an error. Please verify weather conditions independently.");
       } else {
         if (_weatherService.hasBadWeather(weatherData)) {
           final weatherDescription = _weatherService.getWeatherDescriptionForDateRange(weatherData, departDay, returnDay);
           _showWeatherReminderDialog(location, "Warning: Bad weather conditions expected during your trip ($weatherDescription). Consider adjusting your plans.");
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Good weather expected for your trip to $location!', style: TextStyle(color: _white)),
-              backgroundColor: _mediumPurple,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to check weather due to a network error: $e. Proceeding with itinerary generation.', style: TextStyle(color: _white)),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      _showWeatherReminderDialog(location, "Weather data could not be fetched due to a network error. Please verify weather conditions independently.");
+      print('Weather check error: $e');
     }
 
     final DateFormat dateFormatter = DateFormat('yyyy-MM-dd');
@@ -262,52 +312,82 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     final String departTimeStr = _departTime!.format(context);
     final String returnTimeStr = _returnTime!.format(context);
 
+    // Compile all preferences
+    final String formattedPreferences = _getFormattedPreferences();
+
+    // Generate Itinerary with enhanced preferences
     try {
-      final result = await GeminiService.generateItinerary(
-        location,
-        departDayStr,
-        returnDayStr,
-        departTimeStr,
-        returnTimeStr,
-        daysBetween,
-        double.parse(_budgetController.text),
-        _interestsController.text, // Pass the interests here
+      final result = await GeminiService.generateEnhancedItinerary(
+        location: location,
+        departDay: departDayStr,
+        returnDay: returnDayStr,
+        departTime: departTimeStr,
+        returnTime: returnTimeStr,
+        daysBetween: daysBetween,
+        budget: double.parse(_budgetController.text),
+        interests: formattedPreferences,
+        travelPace: _travelPace,
+        accommodationType: _accommodationController.text.isNotEmpty ? _accommodationController.text : 'any',
+        transportPreference: _transportController.text.isNotEmpty ? _transportController.text : 'any',
+        mealPreferences: _mealPreferences,
+        selectedCategories: _selectedInterests,
       );
 
       if (result.containsKey('error')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['error'].toString(), style: TextStyle(color: _white)),
+            content: Text('Error: ${result['error'].toString()}', style: TextStyle(color: _white)),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
-      } else {
-        final Map<String, dynamic> generatedTripDetails = {
-          'location': location,
-          'departDay': departDayStr,
-          'returnDay': returnDayStr,
-          'departTime': departTimeStr,
-          'returnTime': returnTimeStr,
-          'totalDays': daysBetween,
-          'budget': double.parse(_budgetController.text),
-          'interests': _interestsController.text,
-          'itinerary': (result['itinerary'] as List<dynamic>?)?.map((item) => item as Map<String, dynamic>).toList() ?? [],
-          'suggestions': (result['suggestions'] as List<dynamic>?)?.map((item) => item as String).toList() ?? [],
-          'createdAt': FieldValue.serverTimestamp(),
-        };
+        return;
+      }
 
-        await _firestoreService.saveItinerary(generatedTripDetails);
+      // Prepare trip details
+      final Map<String, dynamic> generatedTripDetails = {
+        'userId': currentUser!.uid,
+        'location': location,
+        'departDay': departDayStr,
+        'returnDay': returnDayStr,
+        'departTime': departTimeStr,
+        'returnTime': returnTimeStr,
+        'totalDays': daysBetween,
+        'budget': double.parse(_budgetController.text),
+        'interests': formattedPreferences,
+        'travelPace': _travelPace,
+        'accommodation': _accommodationController.text,
+        'transport': _transportController.text,
+        'itinerary': (result['itinerary'] as List<dynamic>?)?.map((item) => item as Map<String, dynamic>).toList() ?? [],
+        'suggestions': (result['suggestions'] as List<dynamic>?)?.map((item) => item as String).toList() ?? [],
+      };
+
+      // Save using FirestoreService
+      try {
+        final String docId = await _firestoreService.saveItinerary(generatedTripDetails);
+        generatedTripDetails['id'] = docId;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Itinerary generated and saved to history!', style: TextStyle(color: _white)),
+            content: Text('Personalized itinerary generated and saved!', style: TextStyle(color: _white)),
             backgroundColor: _mediumPurple,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
 
+        // Navigate to detail screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ViewItineraryDetailScreen(tripDetails: generatedTripDetails, isNewTrip: true),
+          ),
+        );
+
+      } catch (firestoreError) {
+        print('Firestore save error: $firestoreError');
+        // Still navigate to show the generated itinerary
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -315,10 +395,11 @@ class _ItineraryScreen extends State<ItineraryScreen> {
           ),
         );
       }
-    } catch (e) {
+
+    } catch (geminiError) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error generating itinerary: $e', style: TextStyle(color: _white)),
+          content: Text('Error generating itinerary: $geminiError', style: TextStyle(color: _white)),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -369,15 +450,66 @@ class _ItineraryScreen extends State<ItineraryScreen> {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: _darkPurple, width: 2.0),
       ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.red, width: 2.0),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.red, width: 2.5),
-      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  // Build interest selection chips
+  Widget _buildInterestChips() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _interestOptions.entries.map((entry) {
+        final category = entry.key;
+        final options = entry.value;
+        final selectedInCategory = _selectedInterests[category] ?? [];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                category,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: _darkPurple,
+                ),
+              ),
+            ),
+            Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: options.map((interest) {
+                final isSelected = selectedInCategory.contains(interest);
+                return FilterChip(
+                  label: Text(
+                    interest,
+                    style: TextStyle(
+                      color: isSelected ? _white : _darkPurple,
+                      fontSize: 12,
+                    ),
+                  ),
+                  selected: isSelected,
+                  onSelected: (bool selected) {
+                    setState(() {
+                      if (selected) {
+                        _selectedInterests[category]!.add(interest);
+                      } else {
+                        _selectedInterests[category]!.remove(interest);
+                      }
+                    });
+                  },
+                  backgroundColor: _lightPurple.withOpacity(0.5),
+                  selectedColor: _mediumPurple,
+                  checkmarkColor: _white,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+        );
+      }).toList(),
     );
   }
 
@@ -386,6 +518,8 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     _locationController.dispose();
     _budgetController.dispose();
     _interestsController.dispose();
+    _accommodationController.dispose();
+    _transportController.dispose();
     super.dispose();
   }
 
@@ -441,6 +575,19 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                       color: _darkPurple,
                     ),
                   ),
+                  Spacer(),
+                  if (currentUser != null) ...[
+                    Icon(Icons.person, color: _mediumPurple, size: 20),
+                    SizedBox(width: 4),
+                    Text(
+                      'Logged In',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _mediumPurple,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -451,28 +598,27 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Welcome Section
-                    Text(
-                      'Plan Your Perfect Adventure',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: _darkPurple,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Let our AI create personalized travel itineraries tailored to your preferences, budget, and interests. Get weather updates, budget management, and detailed day-by-day plans.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: _greyText,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // Main Action Buttons
                     if (!isFormVisible) ...[
-                      // Generate Itinerary Button
+                      Text(
+                        'Plan Your Perfect Adventure',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: _darkPurple,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Let our AI create highly personalized travel itineraries based on your specific preferences, interests, and travel style.',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _greyText,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+
+                      // Main Action Buttons
                       Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
@@ -558,45 +704,9 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 30),
-
-                      // Features Info
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: _white.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.deepPurple.withOpacity(0.1),
-                              spreadRadius: 1,
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Features:',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _darkPurple,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildFeatureItem(Icons.wb_sunny_outlined, 'Weather Integration'),
-                            _buildFeatureItem(Icons.account_balance_wallet_outlined, 'Budget Management'),
-                            _buildFeatureItem(Icons.star_outline, 'Personalized Recommendations'),
-                            _buildFeatureItem(Icons.schedule_outlined, 'Detailed Day Plans'),
-                          ],
-                        ),
-                      ),
                     ],
 
-                    // Form Section (appears when Generate Itinerary is clicked)
+                    // Form Section
                     if (isFormVisible) ...[
                       Row(
                         children: [
@@ -609,7 +719,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                             icon: Icon(Icons.arrow_back, color: _darkPurple),
                           ),
                           Text(
-                            'Create Your Itinerary',
+                            'Create Your Personalized Itinerary',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -620,9 +730,10 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                       ),
                       const SizedBox(height: 20),
 
+                      // Basic Information Section
                       Container(
                         decoration: BoxDecoration(
-                          color: _white.withOpacity(0.8),
+                          color: _white.withOpacity(0.9),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
@@ -635,13 +746,23 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                         ),
                         padding: const EdgeInsets.all(24),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text(
+                              '📍 Basic Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             TextField(
                               controller: _locationController,
                               style: TextStyle(color: _darkPurple, fontSize: 16),
                               onChanged: (_) => setState(() {}),
                               decoration: _buildInputDecoration(
-                                "Enter Location",
+                                "Enter Location (e.g., Bangkok, Paris)",
                                 prefixIcon: Icons.location_on,
                               ),
                             ),
@@ -651,20 +772,10 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                               onChanged: (_) => setState(() {}),
                               style: TextStyle(color: _darkPurple, fontSize: 16),
                               decoration: _buildInputDecoration(
-                                "Enter Budget (RM)",
+                                "Enter Total Budget (RM)",
                                 prefixIcon: Icons.monetization_on,
                               ),
                               keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 16),
-                            TextField(
-                              controller: _interestsController,
-                              onChanged: (_) => setState(() {}),
-                              style: TextStyle(color: _darkPurple, fontSize: 16),
-                              decoration: _buildInputDecoration(
-                                "Interests (e.g., food, nature)",
-                                prefixIcon: Icons.star,
-                              ),
                             ),
                             const SizedBox(height: 24),
                             Row(
@@ -701,7 +812,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                                               : _departTime!.format(context),
                                         ),
                                         decoration: _buildInputDecoration(
-                                          "Departure Time",
+                                          "Time",
                                           prefixIcon: Icons.access_time,
                                         ),
                                       ),
@@ -745,7 +856,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                                               : _returnTime!.format(context),
                                         ),
                                         decoration: _buildInputDecoration(
-                                          "Return Time",
+                                          "Time",
                                           prefixIcon: Icons.access_time,
                                         ),
                                       ),
@@ -754,56 +865,245 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 32),
-                            SizedBox(
-                              width: double.infinity,
-                              child: AbsorbPointer(
-                                absorbing: isLoading || !canGenerate,
-                                child: Opacity(
-                                  opacity: (isLoading || !canGenerate) ? 0.6 : 1.0,
-                                  child: ElevatedButton.icon(
-                                    onPressed: _generateItinerary,
-                                    icon: isLoading
-                                        ? const SizedBox(width: 0)
-                                        : const Icon(Icons.auto_awesome, color: Colors.white),
-                                    label: isLoading
-                                        ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                        : const Text(
-                                      'Generate Itinerary',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: _darkPurple,
-                                      foregroundColor: _white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      elevation: 3,
-                                      shadowColor: Colors.deepPurple.withOpacity(0.3),
-                                    ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Travel Preferences Section
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🎯 Travel Preferences',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Travel Pace
+                            Text(
+                              'Travel Pace',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: Text('Relaxed', style: TextStyle(fontSize: 13)),
+                                    value: 'relaxed',
+                                    groupValue: _travelPace,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _travelPace = value!;
+                                      });
+                                    },
+                                    activeColor: _mediumPurple,
+                                    contentPadding: EdgeInsets.zero,
                                   ),
                                 ),
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: Text('Moderate', style: TextStyle(fontSize: 13)),
+                                    value: 'moderate',
+                                    groupValue: _travelPace,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _travelPace = value!;
+                                      });
+                                    },
+                                    activeColor: _mediumPurple,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: Text('Packed', style: TextStyle(fontSize: 13)),
+                                    value: 'packed',
+                                    groupValue: _travelPace,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _travelPace = value!;
+                                      });
+                                    },
+                                    activeColor: _mediumPurple,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Accommodation & Transport
+                            TextField(
+                              controller: _accommodationController,
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                "Accommodation Type (e.g., Hotel, Hostel, Airbnb)",
+                                prefixIcon: Icons.hotel,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _transportController,
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                "Transport Preference (e.g., Public, Taxi, Walk)",
+                                prefixIcon: Icons.directions_car,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Meal Preferences
+                            Text(
+                              'Dietary Preferences',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8.0,
+                              children: ['Vegetarian', 'Vegan', 'Halal', 'Gluten-Free', 'None'].map((meal) {
+                                final isSelected = _mealPreferences.contains(meal);
+                                return FilterChip(
+                                  label: Text(meal, style: TextStyle(color: isSelected ? _white : _darkPurple, fontSize: 12)),
+                                  selected: isSelected,
+                                  onSelected: (bool selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _mealPreferences.add(meal);
+                                      } else {
+                                        _mealPreferences.remove(meal);
+                                      }
+                                    });
+                                  },
+                                  backgroundColor: _lightPurple.withOpacity(0.5),
+                                  selectedColor: _mediumPurple,
+                                  checkmarkColor: _white,
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Interests Section
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '✨ Select Your Interests',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildInterestChips(),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _interestsController,
+                              onChanged: (_) => setState(() {}),
+                              style: TextStyle(color: _darkPurple, fontSize: 16),
+                              maxLines: 2,
+                              decoration: _buildInputDecoration(
+                                "Add custom interests (e.g., Bangkok hip-hop fashion, street art)",
+                                prefixIcon: Icons.add_circle_outline,
                               ),
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(height: 32),
+
+                      // Generate Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: AbsorbPointer(
+                          absorbing: isLoading || !canGenerate,
+                          child: Opacity(
+                            opacity: (isLoading || !canGenerate) ? 0.6 : 1.0,
+                            child: ElevatedButton.icon(
+                              onPressed: _generateItinerary,
+                              icon: isLoading
+                                  ? const SizedBox(width: 0)
+                                  : const Icon(Icons.auto_awesome, color: Colors.white),
+                              label: isLoading
+                                  ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : const Text(
+                                'Generate Personalized Itinerary',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _darkPurple,
+                                foregroundColor: _white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                elevation: 3,
+                                shadowColor: Colors.deepPurple.withOpacity(0.3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
                       Center(
                         child: Text(
-                          "Your generated itinerary will appear in a new screen and be saved to history.",
+                          "Your personalized itinerary will be generated based on all your preferences and saved to your collection.",
                           style: TextStyle(fontWeight: FontWeight.bold, color: _greyText),
                           textAlign: TextAlign.center,
                         ),
@@ -818,7 +1118,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 0),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
     );
   }
 

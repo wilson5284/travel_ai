@@ -1,4 +1,6 @@
+// lib/services/trip_timeline_service.dart
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import 'firestore_service.dart';
 import 'weather_service.dart';
@@ -11,10 +13,11 @@ class TripTimelineService {
   final FirestoreService _firestoreService = FirestoreService();
   final WeatherService _weatherService = WeatherService();
 
-  // Get all trips with timeline status
-  Future<List<Map<String, dynamic>>> getTripsWithStatus() async {
+  // Get all trips with timeline status for a specific user
+  Future<List<Map<String, dynamic>>> getUserTripsWithStatus(String userId) async {
     try {
-      final List<Map<String, dynamic>> trips = await _firestoreService.getSavedItineraries();
+      // Get user-specific trips from Firestore using your existing service
+      final List<Map<String, dynamic>> trips = await _firestoreService.getUserSavedItineraries(userId);
       final DateTime now = DateTime.now();
 
       return trips.map((trip) {
@@ -33,14 +36,14 @@ class TripTimelineService {
         return trip;
       }).toList();
     } catch (e) {
-      print('Error getting trips with status: $e');
+      print('Error getting user trips with status: $e');
       return [];
     }
   }
 
-  // Get trips that need attention (upcoming with alerts)
-  Future<List<Map<String, dynamic>>> getTripsNeedingAttention() async {
-    final trips = await getTripsWithStatus();
+  // Get trips that need attention for a specific user (upcoming with alerts)
+  Future<List<Map<String, dynamic>>> getUserTripsNeedingAttention(String userId) async {
+    final trips = await getUserTripsWithStatus(userId);
     final now = DateTime.now();
 
     return trips.where((trip) {
@@ -49,9 +52,9 @@ class TripTimelineService {
     }).toList();
   }
 
-  // Get weather alerts for upcoming trips
-  Future<List<Map<String, dynamic>>> getWeatherAlerts() async {
-    final upcomingTrips = await getTripsNeedingAttention();
+  // Get weather alerts for a specific user's upcoming trips
+  Future<List<Map<String, dynamic>>> getUserWeatherAlerts(String userId) async {
+    final upcomingTrips = await getUserTripsNeedingAttention(userId);
     List<Map<String, dynamic>> alerts = [];
 
     for (final trip in upcomingTrips) {
@@ -81,9 +84,9 @@ class TripTimelineService {
     return alerts;
   }
 
-  // Get timeline events (reminders, alerts, etc.)
-  Future<List<Map<String, dynamic>>> getTimelineEvents() async {
-    final trips = await getTripsWithStatus();
+  // Get timeline events for a specific user (reminders, alerts, etc.)
+  Future<List<Map<String, dynamic>>> getUserTimelineEvents(String userId) async {
+    final trips = await getUserTripsWithStatus(userId);
     List<Map<String, dynamic>> events = [];
 
     for (final trip in trips) {
@@ -151,28 +154,9 @@ class TripTimelineService {
     return events;
   }
 
-  // Save user interaction with timeline
-  Future<void> markEventAcknowledged(String tripId, String eventType) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String key = 'acknowledged_events_$tripId';
-    final List<String> acknowledged = prefs.getStringList(key) ?? [];
-    if (!acknowledged.contains(eventType)) {
-      acknowledged.add(eventType);
-      await prefs.setStringList(key, acknowledged);
-    }
-  }
-
-  // Check if event was acknowledged
-  Future<bool> isEventAcknowledged(String tripId, String eventType) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String key = 'acknowledged_events_$tripId';
-    final List<String> acknowledged = prefs.getStringList(key) ?? [];
-    return acknowledged.contains(eventType);
-  }
-
-  // Get trip statistics
-  Future<Map<String, int>> getTripStatistics() async {
-    final trips = await getTripsWithStatus();
+  // Get user-specific trip statistics
+  Future<Map<String, int>> getUserTripStatistics(String userId) async {
+    final trips = await getUserTripsWithStatus(userId);
 
     int upcoming = 0;
     int active = 0;
@@ -201,7 +185,119 @@ class TripTimelineService {
     };
   }
 
-  // Helper methods
+  // Save user interaction with timeline (user-specific)
+  Future<void> markEventAcknowledged(String userId, String tripId, String eventType) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = 'acknowledged_events_${userId}_$tripId';
+    final List<String> acknowledged = prefs.getStringList(key) ?? [];
+    if (!acknowledged.contains(eventType)) {
+      acknowledged.add(eventType);
+      await prefs.setStringList(key, acknowledged);
+    }
+  }
+
+  // Check if event was acknowledged (user-specific)
+  Future<bool> isEventAcknowledged(String userId, String tripId, String eventType) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = 'acknowledged_events_${userId}_$tripId';
+    final List<String> acknowledged = prefs.getStringList(key) ?? [];
+    return acknowledged.contains(eventType);
+  }
+
+  // Get user's favorite destinations (based on trip history)
+  Future<List<Map<String, dynamic>>> getUserFavoriteDestinations(String userId, {int limit = 5}) async {
+    try {
+      final trips = await getUserTripsWithStatus(userId);
+
+      // Count destinations
+      Map<String, int> destinationCounts = {};
+      for (var trip in trips) {
+        final location = trip['location'] as String? ?? 'Unknown';
+        destinationCounts[location] = (destinationCounts[location] ?? 0) + 1;
+      }
+
+      // Sort by frequency and return top destinations
+      final sortedDestinations = destinationCounts.entries
+          .map((entry) => {
+        'location': entry.key,
+        'visitCount': entry.value,
+      })
+          .toList();
+
+      sortedDestinations.sort((a, b) => (b['visitCount'] as int).compareTo(a['visitCount'] as int));
+
+      return sortedDestinations.take(limit).toList();
+    } catch (e) {
+      print('Error getting favorite destinations: $e');
+      return [];
+    }
+  }
+
+  // Convenience methods that automatically get current user
+  Future<String?> _getCurrentUserId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    return user?.uid;
+  }
+
+  // Backward compatibility methods - automatically use current user
+  Future<List<Map<String, dynamic>>> getTripsWithStatus() async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return getUserTripsWithStatus(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> getTripsNeedingAttention() async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return getUserTripsNeedingAttention(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> getWeatherAlerts() async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return getUserWeatherAlerts(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> getTimelineEvents() async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return getUserTimelineEvents(userId);
+  }
+
+  Future<Map<String, int>> getTripStatistics() async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return getUserTripStatistics(userId);
+  }
+
+  // Backward compatibility for event acknowledgment
+  Future<void> markEventAcknowledgedLegacy(String tripId, String eventType) async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    await markEventAcknowledged(userId, tripId, eventType);
+  }
+
+  Future<bool> isEventAcknowledgedLegacy(String tripId, String eventType) async {
+    final userId = await _getCurrentUserId();
+    if (userId == null) {
+      throw Exception('User not authenticated. Please log in to access trip data.');
+    }
+    return isEventAcknowledged(userId, tripId, eventType);
+  }
+
+  // Helper methods (unchanged)
   String _getTripStatus(int daysUntilTrip, bool isActive, bool isPast) {
     if (isActive) return 'active';
     if (isPast) return 'completed';

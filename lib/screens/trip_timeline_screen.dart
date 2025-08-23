@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
 import '../services/weather_service.dart';
-import '../services/trip_timeline_service.dart'; // Add this import
+import '../services/trip_timeline_service.dart';
 import '../widgets/bottom_nav_bar.dart';
+import 'dynamic_itinerary/view_itinerary_detail_screen.dart';
 
 class TripTimelineScreen extends StatefulWidget {
   const TripTimelineScreen({super.key});
@@ -15,16 +17,21 @@ class TripTimelineScreen extends StatefulWidget {
 class _TripTimelineScreenState extends State<TripTimelineScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final WeatherService _weatherService = WeatherService();
-  final TripTimelineService _timelineService = TripTimelineService(); // Add this
+  final TripTimelineService _timelineService = TripTimelineService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  List<Map<String, dynamic>> _allTrips = []; // Store all trips
-  List<Map<String, dynamic>> _filteredTrips = []; // Currently displayed trips
+  List<Map<String, dynamic>> _allTrips = [];
+  List<Map<String, dynamic>> _filteredTrips = [];
   Map<String, Map<String, dynamic>> _weatherData = {};
-  List<Map<String, dynamic>> _timelineEvents = []; // Add this
+  List<Map<String, dynamic>> _timelineEvents = [];
   bool _isLoading = true;
-  bool _showUpcoming = true; // Toggle between upcoming and completed trips
+  bool _showUpcoming = true;
 
-  // Color scheme (keeping your existing colors)
+  // User-specific variables
+  User? _currentUser;
+  bool _isUserAuthenticated = false;
+
+  // Color scheme
   final Color _white = Colors.white;
   final Color _darkPurple = const Color(0xFF6A1B9A);
   final Color _mediumPurple = const Color(0xFF9C27B0);
@@ -38,42 +45,116 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTripsAndWeather();
+    _checkUserAuthentication();
+  }
+
+  // Check if user is authenticated before loading trips
+  void _checkUserAuthentication() {
+    _currentUser = _auth.currentUser;
+
+    if (_currentUser != null) {
+      setState(() {
+        _isUserAuthenticated = true;
+      });
+      _loadTripsAndWeather();
+    } else {
+      setState(() {
+        _isUserAuthenticated = false;
+        _isLoading = false;
+      });
+      _showAuthenticationRequiredDialog();
+    }
+  }
+
+  // Show dialog when user is not authenticated
+  void _showAuthenticationRequiredDialog() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text(
+                'Authentication Required',
+                style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_outline, size: 64, color: _mediumPurple),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'You need to be logged in to view your trip timeline. Please sign in to access your personal itinerary history.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop(); // Go back to previous screen
+                  },
+                  child: const Text('Go Back'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.pushReplacementNamed(context, '/login');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _mediumPurple,
+                    foregroundColor: _white,
+                  ),
+                  child: const Text('Sign In'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    });
   }
 
   Future<void> _loadTripsAndWeather() async {
     setState(() => _isLoading = true);
 
     try {
-      // Use the timeline service instead of direct firestore calls
+      // Use the timeline service to get user-specific trips
       final trips = await _timelineService.getTripsWithStatus();
       final now = DateTime.now();
 
-      // Filter trips (same logic as before)
+      // Filter trips for timeline view (past 30 days to future 365 days)
       final filteredTrips = trips.where((trip) {
         final departDate = DateTime.parse(trip['departDay']);
         final daysDifference = departDate.difference(now).inDays;
         return daysDifference >= -30 && daysDifference <= 365;
       }).toList();
 
+      // Sort trips by departure date for timeline order
       filteredTrips.sort((a, b) {
         final dateA = DateTime.parse(a['departDay']);
         final dateB = DateTime.parse(b['departDay']);
         return dateA.compareTo(dateB);
       });
 
-      // Load timeline events
+      // Load timeline events for user
       final timelineEvents = await _timelineService.getTimelineEvents();
 
-      // Load weather data for each trip
+      // Load weather data for each upcoming trip
       Map<String, Map<String, dynamic>> weatherMap = {};
       for (final trip in filteredTrips) {
-        try {
-          final weather = await _weatherService.getWeatherForecast(trip['location']);
-          weatherMap[trip['id']] = weather;
-        } catch (e) {
-          print('Failed to load weather for ${trip['location']}: $e');
-          weatherMap[trip['id']] = {'error': 'Failed to load weather'};
+        // Only load weather for upcoming trips within 14 days
+        final daysUntil = trip['daysUntilTrip'] as int;
+        if (daysUntil >= 0 && daysUntil <= 14) {
+          try {
+            final weather = await _weatherService.getWeatherForecast(trip['location']);
+            weatherMap[trip['id']] = weather;
+          } catch (e) {
+            print('Failed to load weather for ${trip['location']}: $e');
+            weatherMap[trip['id']] = {'error': 'Failed to load weather'};
+          }
         }
       }
 
@@ -84,30 +165,21 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
         _isLoading = false;
       });
 
-      // Filter trips based on current toggle state
       _filterTrips();
 
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error loading trips: $e'),
-          backgroundColor: _alertRed,
-        ),
-      );
+      _showErrorMessage('Error loading trips: $e');
     }
   }
 
-  // Filter trips based on upcoming/completed toggle
   void _filterTrips() {
     setState(() {
       if (_showUpcoming) {
-        // Show upcoming and active trips
         _filteredTrips = _allTrips.where((trip) {
           return trip['isUpcoming'] == true || trip['isActive'] == true;
         }).toList();
       } else {
-        // Show completed trips only
         _filteredTrips = _allTrips.where((trip) {
           return trip['isPast'] == true;
         }).toList();
@@ -115,7 +187,6 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
     });
   }
 
-  // Toggle between upcoming and completed trips
   void _toggleTripView() {
     setState(() {
       _showUpcoming = !_showUpcoming;
@@ -123,91 +194,117 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
     _filterTrips();
   }
 
-  // Add navigation to trip details
-  void _navigateToTripDetails(Map<String, dynamic> trip) {
-    // Option 1: Navigate to a separate screen (if you have one)
+  // Navigate to itinerary details page
+  void _navigateToItineraryDetails(Map<String, dynamic> trip) {
     try {
-      Navigator.pushNamed(
-          context,
-          '/trip-details',
-          arguments: {
-            'tripId': trip['id'],
-            'trip': trip,
-          }
-      );
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ViewItineraryDetailScreen(
+            tripDetails: trip,
+            isNewTrip: false,
+          ),
+        ),
+      ).then((result) {
+        // Refresh data when returning from details page
+        _loadTripsAndWeather();
+
+        // If trip was deleted, show confirmation
+        if (result == true) {
+          _showSuccessMessage('Trip deleted successfully!');
+        }
+      });
     } catch (e) {
-      // Option 2: Fallback to dialog if route doesn't exist
-      print('Trip details route not found, showing dialog instead: $e');
-      _showTripDetailsDialog(trip);
+      print('Navigation error: $e');
+      _showErrorMessage('Unable to open itinerary details. Please try again.');
     }
   }
 
-  // Optional: Show trip details in a dialog if you don't have a separate screen
-  void _showTripDetailsDialog(Map<String, dynamic> trip) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(trip['location'] ?? 'Trip Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Departure: ${trip['departDay'] ?? 'Not set'}'),
-              Text('Return: ${trip['returnDay'] ?? 'Not set'}'),
-              const SizedBox(height: 16),
-              if (trip['itinerary'] != null && trip['itinerary'] is List) ...[
-                const Text('Full Itinerary:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                ...((trip['itinerary'] as List).map((day) {
-                  if (day == null || day is! Map) return Container();
+  // Show error messages to user
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _alertRed,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
 
-                  final dayMap = day as Map<String, dynamic>;
-                  final dayNumber = dayMap['day']?.toString() ?? '?';
-                  final activities = dayMap['activities'];
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Day $dayNumber:', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        if (activities != null && activities is List)
-                          ...activities.map((activity) {
-                            if (activity == null || activity is! Map) return Container();
-                            final activityMap = activity as Map<String, dynamic>;
-                            final activityName = activityMap['name']?.toString() ?? 'Activity';
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 12, bottom: 4),
-                              child: Text('• $activityName'),
-                            );
-                          }).where((widget) => widget is! Container).toList()
-                        else
-                          const Padding(
-                            padding: EdgeInsets.only(left: 12, bottom: 4),
-                            child: Text('• No activities planned'),
-                          ),
-                      ],
-                    ),
-                  );
-                }).where((widget) => widget is! Container).toList()),
-              ] else
-                const Text('No itinerary available'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
+  // Show success messages to user
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _successGreen,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show authentication required screen if user is not logged in
+    if (!_isUserAuthenticated) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFF3E5F5),
+                Color(0xFFFFF5E6),
+              ],
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 100, color: _mediumPurple),
+                const SizedBox(height: 24),
+                Text(
+                  'Authentication Required',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: _darkPurple,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'Please sign in to view your personal trip timeline and itinerary history.',
+                    style: TextStyle(fontSize: 16, color: _greyText),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign In'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _mediumPurple,
+                    foregroundColor: _white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: const BottomNavBar(currentIndex: 3),
+      );
+    }
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -225,7 +322,19 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
             _buildHeader(),
             Expanded(
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: _mediumPurple))
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: _mediumPurple),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loading your trip timeline...',
+                      style: TextStyle(color: _greyText),
+                    ),
+                  ],
+                ),
+              )
                   : _filteredTrips.isEmpty
                   ? _buildEmptyState()
                   : _buildTripTimeline(),
@@ -248,6 +357,11 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
 
     final currentCount = _showUpcoming ? upcomingCount : completedCount;
     final currentLabel = _showUpcoming ? 'upcoming trips' : 'completed trips';
+
+    // Get user display name or email
+    final String userDisplayName = _currentUser?.displayName ??
+        _currentUser?.email?.split('@')[0] ??
+        'User';
 
     return Container(
       padding: EdgeInsets.only(
@@ -278,7 +392,7 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Trip Timeline',
+                    'My Trip Timeline',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -292,18 +406,63 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
                       color: _greyText,
                     ),
                   ),
+                  // User indicator
+                  Row(
+                    children: [
+                      Icon(Icons.person, size: 14, color: _mediumPurple),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Welcome, $userDisplayName',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _mediumPurple,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               const Spacer(),
-              IconButton(
-                onPressed: _loadTripsAndWeather,
-                icon: Icon(Icons.refresh, color: _darkPurple),
-                tooltip: 'Refresh',
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: _darkPurple),
+                onSelected: (String value) {
+                  switch (value) {
+                    case 'refresh':
+                      _loadTripsAndWeather();
+                      break;
+                    case 'logout':
+                      _showLogoutConfirmation();
+                      break;
+                  }
+                },
+                itemBuilder: (BuildContext context) => [
+                  PopupMenuItem<String>(
+                    value: 'refresh',
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh, color: _darkPurple, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('Refresh Timeline'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.logout, color: Colors.red, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('Sign Out'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
-          // Toggle buttons
+          // Toggle buttons for upcoming/completed
           Container(
             decoration: BoxDecoration(
               color: _lightPurple.withOpacity(0.3),
@@ -385,6 +544,62 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
     );
   }
 
+  // Show logout confirmation dialog
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Sign Out',
+            style: TextStyle(color: _darkPurple, fontWeight: FontWeight.bold),
+          ),
+          content: const Text('Are you sure you want to sign out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel', style: TextStyle(color: _greyText)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _performLogout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: _white,
+              ),
+              child: const Text('Sign Out'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Perform user logout
+  Future<void> _performLogout() async {
+    try {
+      await _auth.signOut();
+
+      // Clear user-specific data
+      setState(() {
+        _currentUser = null;
+        _isUserAuthenticated = false;
+        _allTrips.clear();
+        _filteredTrips.clear();
+        _weatherData.clear();
+        _timelineEvents.clear();
+      });
+
+      // Navigate to login or home screen
+      Navigator.pushReplacementNamed(context, '/login');
+
+    } catch (e) {
+      _showErrorMessage('Failed to sign out: $e');
+    }
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -409,7 +624,7 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
               _showUpcoming
-                  ? 'Start planning your next adventure! Your upcoming trips will appear here with weather alerts and timeline.'
+                  ? 'Start planning your next adventure! Your upcoming trips will appear here with weather alerts and timeline updates.'
                   : 'Your completed trips will show up here once you finish them. Switch to "Upcoming" to plan new adventures!',
               style: TextStyle(fontSize: 16, color: _greyText),
               textAlign: TextAlign.center,
@@ -454,7 +669,6 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
   }
 
   Widget _buildTripCard(Map<String, dynamic> trip, Map<String, dynamic> weather, int index) {
-    // Use the service data instead of calculating manually
     final daysUntilTrip = trip['daysUntilTrip'] as int;
     final isUpcoming = trip['isUpcoming'] as bool;
     final isActive = trip['isActive'] as bool;
@@ -509,7 +723,7 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            trip['location'],
+                            trip['location'] ?? 'Unknown Location',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -535,17 +749,15 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
             ),
           ),
 
-          // Weather and alerts section
+          // Weather section (only for upcoming trips within 14 days)
           if (weather.isNotEmpty) _buildWeatherSection(trip, weather, daysUntilTrip),
 
-          // Trip details
+          // Trip actions section
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                // Safe check for itinerary existence
-                if (trip['itinerary'] != null) _buildItineraryPreview(trip['itinerary']),
-                const SizedBox(height: 12),
+                // Trip duration info
                 Row(
                   children: [
                     Icon(Icons.schedule, size: 16, color: _greyText),
@@ -554,12 +766,27 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
                       'Duration: ${DateTime.parse(trip['returnDay']).difference(DateTime.parse(trip['departDay'])).inDays + 1} days',
                       style: TextStyle(fontSize: 14, color: _greyText),
                     ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => _navigateToTripDetails(trip), // Fixed navigation
-                      child: Text('View Details', style: TextStyle(color: _mediumPurple)),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 16),
+
+                // Action button - View Itinerary
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _navigateToItineraryDetails(trip),
+                    icon: const Icon(Icons.list_alt),
+                    label: const Text('View Itinerary Details'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _mediumPurple,
+                      foregroundColor: _white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -568,9 +795,6 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
       ),
     );
   }
-
-  // Keep all your existing methods (_buildStatusChip, _buildTimelineStatus, etc.)
-  // ... (rest of your existing methods remain the same)
 
   Widget _buildStatusChip(bool isActive, bool isPast, int daysUntilTrip) {
     String text;
@@ -733,91 +957,6 @@ class _TripTimelineScreenState extends State<TripTimelineScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildItineraryPreview(dynamic itineraryData) {
-    // Safe null check and casting
-    if (itineraryData == null) return Container();
-
-    List<dynamic> itinerary;
-    try {
-      itinerary = itineraryData is List ? itineraryData : [];
-    } catch (e) {
-      print('Error casting itinerary: $e');
-      return Container();
-    }
-
-    if (itinerary.isEmpty) return Container();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Itinerary Preview',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: _darkPurple,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...itinerary.take(3).map((day) {
-          // Safe access to day data
-          if (day == null || day is! Map) {
-            return Container();
-          }
-
-          final dayMap = day as Map<String, dynamic>;
-          final dayNumber = dayMap['day']?.toString() ?? '?';
-
-          // Safe access to activities
-          String activityText = 'Activities planned';
-          try {
-            final activities = dayMap['activities'];
-            if (activities != null && activities is List && activities.isNotEmpty) {
-              final firstActivity = activities[0];
-              if (firstActivity != null && firstActivity is Map) {
-                activityText = firstActivity['name']?.toString() ?? 'Activities planned';
-              }
-            }
-          } catch (e) {
-            print('Error accessing activities: $e');
-          }
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _mediumPurple,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Day $dayNumber: $activityText',
-                    style: TextStyle(fontSize: 14, color: _greyText),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).where((widget) => widget is! Container || (widget as Container).child != null).toList(),
-        if (itinerary.length > 3)
-          Padding(
-            padding: const EdgeInsets.only(left: 20),
-            child: Text(
-              '+ ${itinerary.length - 3} more days',
-              style: TextStyle(fontSize: 12, color: _greyText, fontStyle: FontStyle.italic),
-            ),
-          ),
-      ],
     );
   }
 }

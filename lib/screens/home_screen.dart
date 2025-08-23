@@ -39,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserCurrency();
-    _loadCachedAmount();
+    _setDefaultAmount(); // Changed from _loadCachedAmount() to _setDefaultAmount()
   }
 
   Future<void> _loadUserCurrency() async {
@@ -76,18 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadCachedAmount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedAmount = prefs.getString('last_amount');
-    if (cachedAmount != null) {
-      _amountController.text = cachedAmount;
-    }
+  // NEW METHOD: Set default amount to 0 instead of loading cached amount
+  void _setDefaultAmount() {
+    _amountController.text = '0'; // Always start with 0
   }
 
-  Future<void> _cacheAmount(String amount) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_amount', amount);
-  }
+  // REMOVED: _loadCachedAmount() method since we want to start with 0
+
+  // REMOVED: _cacheAmount() method since we're not caching amounts anymore
 
   Future<void> _saveConversionToFirestore(double amount, double result) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -139,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final amount = double.tryParse(_amountController.text.trim());
     if (amount == null || amount <= 0) {
-      _showSnackBar('Please enter a valid amount.');
+      _showSnackBar('Please enter a valid amount greater than 0.');
       return;
     }
 
@@ -164,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (result != null) {
             await _saveConversionToFirestore(amount, result);
-            await _cacheAmount(amount.toString());
+            // REMOVED: caching functionality since we want to start fresh each time
           }
         } else {
           _showSnackBar('API Error: ${data['error-type'] ?? 'Unknown error'}');
@@ -186,6 +182,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _convertedAmount = null;
       });
     }
+  }
+
+  // NEW METHOD: Clear amount field and reset to 0
+  void _clearAmount() {
+    setState(() {
+      _amountController.text = '0';
+      _convertedAmount = null;
+    });
   }
 
   InputDecoration _buildInputDecoration(String labelText, {IconData? prefixIcon}) {
@@ -462,17 +466,41 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          TextFormField(
-                            controller: _amountController,
-                            keyboardType: TextInputType.number,
-                            decoration: _buildInputDecoration('Amount', prefixIcon: Icons.money),
-                            style: TextStyle(
-                              color: _darkPurple,
-                              fontSize: 16,
-                            ),
-                            onChanged: (value) {
-                              setState(() {});
-                            },
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _amountController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _buildInputDecoration('Amount', prefixIcon: Icons.money),
+                                  style: TextStyle(
+                                    color: _darkPurple,
+                                    fontSize: 16,
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Clear/Reset button
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _greyText.withValues(alpha: 0.1),
+                                  border: Border.all(color: _greyText.withValues(alpha: 0.3)),
+                                ),
+                                child: IconButton(
+                                  onPressed: _clearAmount,
+                                  icon: Icon(
+                                    Icons.refresh,
+                                    color: _greyText,
+                                    size: 20,
+                                  ),
+                                  tooltip: "Reset to 0",
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 24),
                           SizedBox(

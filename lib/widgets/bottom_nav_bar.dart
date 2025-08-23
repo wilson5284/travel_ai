@@ -17,53 +17,39 @@ class BottomNavBar extends StatelessWidget {
   void _onItemTapped(BuildContext context, int index) {
     if (index == currentIndex) return;
 
+    // Clear the navigation stack and push the new route
+    Widget targetScreen;
+
     switch (index) {
       case 0:
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation1, animation2) => const HomeScreen(),
-            transitionDuration: Duration.zero,
-          ),
-        );
+        targetScreen = const HomeScreen();
         break;
       case 1:
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation1, animation2) => const ItineraryScreen(),
-            transitionDuration: Duration.zero,
-          ),
-        );
+        targetScreen = const ItineraryScreen();
         break;
       case 2:
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation1, animation2) => const ChatbotScreen(),
-            transitionDuration: Duration.zero,
-          ),
-        );
+        targetScreen = const ChatbotScreen();
         break;
       case 3:
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation1, animation2) => const TripTimelineScreen(),
-            transitionDuration: Duration.zero,
-          ),
-        );
+        targetScreen = const TripTimelineScreen();
         break;
-        case 4:
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation1, animation2) => const ProfileScreen(),
-            transitionDuration: Duration.zero,
-          ),
-        );
+      case 4:
+        targetScreen = const ProfileScreen();
         break;
+      default:
+        return;
     }
+
+    // Use pushAndRemoveUntil to ensure clean navigation
+    Navigator.pushAndRemoveUntil(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation1, animation2) => targetScreen,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+          (Route<dynamic> route) => false, // Remove all previous routes
+    );
   }
 
   @override
@@ -73,7 +59,7 @@ class BottomNavBar extends StatelessWidget {
         color: _white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha:0.15),
+            color: Colors.grey.withValues(alpha: 0.15),
             spreadRadius: 0,
             blurRadius: 10,
             offset: const Offset(0, -4),
@@ -84,7 +70,7 @@ class BottomNavBar extends StatelessWidget {
           topRight: Radius.circular(20),
         ),
       ),
-      child: ClipRRect( // Ensures the BottomNavigationBar itself respects the border radius
+      child: ClipRRect(
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
@@ -92,15 +78,10 @@ class BottomNavBar extends StatelessWidget {
         child: BottomNavigationBar(
           currentIndex: currentIndex,
           onTap: (index) => _onItemTapped(context, index),
-          backgroundColor: _white, // Explicitly white background for the bar
-          type: BottomNavigationBarType.fixed, // Ensures items are evenly spaced
-
-          // Active item color: violet
+          backgroundColor: _white,
+          type: BottomNavigationBarType.fixed,
           selectedItemColor: _mediumPurple,
-          // Inactive item color: grey
           unselectedItemColor: _greyText,
-
-          // Keep selected label style same size as unselected
           selectedLabelStyle: TextStyle(
             fontWeight: FontWeight.normal,
             fontSize: 11,
@@ -112,7 +93,6 @@ class BottomNavBar extends StatelessWidget {
             color: _greyText,
           ),
           iconSize: 24.0,
-
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home),
