@@ -20,6 +20,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   UserModel? _userModel;
   bool _isLoading = true;
   String? _errorMessage;
+  int _unreadAnnouncementsCount = 0;
 
   // Consistent Color Scheme
   final Color _white = Colors.white;
@@ -31,11 +32,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color _gradientStart = const Color(0xFFF3E5F5);
   final Color _gradientEnd = const Color(0xFFFFF5E6);
 
-
   @override
   void initState() {
     super.initState();
     _fetchUserData();
+    _fetchUnreadAnnouncementsCount();
   }
 
   Future<void> _fetchUserData() async {
@@ -65,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'createdAt': FieldValue.serverTimestamp(),
           'role': 'user',
           'avatarUrl': null, // Default to null for avatar
+          'readAnnouncements': [], // Initialize empty array for read announcements
         });
         // Re-fetch after creation to get the newly created data
         final updatedDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
@@ -86,9 +88,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _fetchUnreadAnnouncementsCount() async {
+    final fbUser = fbAuth.FirebaseAuth.instance.currentUser;
+    if (fbUser == null) return;
+
+    try {
+      // Get user's read announcements
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(fbUser.uid)
+          .get();
+
+      List<String> readAnnouncements = [];
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        readAnnouncements = List<String>.from(userData['readAnnouncements'] ?? []);
+      }
+
+      // Get all active announcements
+      final announcementsSnapshot = await FirebaseFirestore.instance
+          .collection('announcements')
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      // Count unread announcements
+      int unreadCount = 0;
+      for (var doc in announcementsSnapshot.docs) {
+        if (!readAnnouncements.contains(doc.id)) {
+          unreadCount++;
+        }
+      }
+
+      setState(() {
+        _unreadAnnouncementsCount = unreadCount;
+      });
+    } catch (e) {
+      // Handle error silently - announcement count is not critical
+      print('Error fetching unread announcements count: $e');
+    }
+  }
+
+  Future<void> _markAnnouncementAsRead(String announcementId) async {
+    final fbUser = fbAuth.FirebaseAuth.instance.currentUser;
+    if (fbUser == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(fbUser.uid)
+          .update({
+        'readAnnouncements': FieldValue.arrayUnion([announcementId]),
+      });
+
+      // Refresh the count
+      await _fetchUnreadAnnouncementsCount();
+    } catch (e) {
+      print('Error marking announcement as read: $e');
+    }
+  }
+
   Future<void> _refreshProfile() async {
     setState(() => _isLoading = true);
     await _fetchUserData();
+    await _fetchUnreadAnnouncementsCount();
   }
 
   // Widget for common dashboard/profile items
@@ -351,26 +413,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              // Announcement with Badge
+              // Announcement with Real Badge Count
               _buildProfileItem(
                 context,
                 title: 'Announcements',
                 icon: Icons.notifications,
                 iconColor: Colors.blueAccent, // Distinct color
-                trailingWidget: Container(
+                trailingWidget: _unreadAnnouncementsCount > 0 ? Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.redAccent,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '34', // Example, fetch actual count
+                    _unreadAnnouncementsCount.toString(),
                     style: TextStyle(color: _white, fontSize: 13, fontWeight: FontWeight.bold),
                   ),
-                ),
-                onTap: () {
-                  // Ensure this route is defined in your main app
-                  Navigator.pushNamed(context, '/announcements');
+                ) : null,
+                onTap: () async {
+                  // Navigate to announcements and refresh count when returning
+                  await Navigator.pushNamed(context, '/announcements');
+                  _fetchUnreadAnnouncementsCount(); // Refresh count after returning
                 },
               ),
 
@@ -381,28 +444,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 iconColor: Colors.red, // Distinct color
                 onTap: () {
                   Navigator.pushNamed(context, '/faq');
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'Preferences & Settings',
-                icon: Icons.settings,
-                iconColor: _darkPurple, // Primary purple
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Preferences not implemented.', style: TextStyle(color: _white)), backgroundColor: _mediumPurple),
-                  );
-                },
-              ),
-              _buildProfileItem(
-                context,
-                title: 'Help & Support',
-                icon: Icons.help_outline,
-                iconColor: Colors.blueGrey, // Distinct color
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Help & Support not implemented.', style: TextStyle(color: _white)), backgroundColor: _mediumPurple),
-                  );
                 },
               ),
               _buildProfileItem(

@@ -108,7 +108,7 @@ class BottomNavBar extends StatelessWidget {
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.notifications),
-              label: 'Notifications',
+              label: 'Timeline',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person),

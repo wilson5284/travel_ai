@@ -454,6 +454,81 @@ class _ItineraryScreen extends State<ItineraryScreen> {
     );
   }
 
+  // Build travel pace selection with custom design
+  Widget _buildTravelPaceSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Travel Pace',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: _darkPurple,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: _lightPurple.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _mediumPurple.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              _buildTravelPaceOption('Relaxed', 'relaxed', Icons.self_improvement),
+              _buildTravelPaceOption('Moderate', 'moderate', Icons.directions_walk),
+              _buildTravelPaceOption('Packed', 'packed', Icons.flash_on),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTravelPaceOption(String label, String value, IconData icon) {
+    final isSelected = _travelPace == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _travelPace = value;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? _mediumPurple : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? _white : _mediumPurple,
+                size: 20,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? _white : _darkPurple,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // Build interest selection chips
   Widget _buildInterestChips() {
     return Column(
@@ -718,12 +793,14 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                             },
                             icon: Icon(Icons.arrow_back, color: _darkPurple),
                           ),
-                          Text(
-                            'Create Your Personalized Itinerary',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: _darkPurple,
+                          Expanded(
+                            child: Text(
+                              'Create Your Personalized Itinerary',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: _darkPurple,
+                              ),
                             ),
                           ),
                         ],
@@ -749,7 +826,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '📍 Basic Information',
+                              'Basic Information',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -889,7 +966,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '🎯 Travel Preferences',
+                              'Travel Preferences',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -898,62 +975,8 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                             ),
                             const SizedBox(height: 20),
 
-                            // Travel Pace
-                            Text(
-                              'Travel Pace',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: _darkPurple,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    title: Text('Relaxed', style: TextStyle(fontSize: 13)),
-                                    value: 'relaxed',
-                                    groupValue: _travelPace,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _travelPace = value!;
-                                      });
-                                    },
-                                    activeColor: _mediumPurple,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    title: Text('Moderate', style: TextStyle(fontSize: 13)),
-                                    value: 'moderate',
-                                    groupValue: _travelPace,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _travelPace = value!;
-                                      });
-                                    },
-                                    activeColor: _mediumPurple,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    title: Text('Packed', style: TextStyle(fontSize: 13)),
-                                    value: 'packed',
-                                    groupValue: _travelPace,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _travelPace = value!;
-                                      });
-                                    },
-                                    activeColor: _mediumPurple,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            // Travel Pace - Custom Design
+                            _buildTravelPaceSelection(),
                             const SizedBox(height: 20),
 
                             // Accommodation & Transport
@@ -1032,7 +1055,7 @@ class _ItineraryScreen extends State<ItineraryScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '✨ Select Your Interests',
+                              'Select Your Interests',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,

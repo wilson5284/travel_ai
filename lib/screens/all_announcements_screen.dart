@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class AllAnnouncementsScreen extends StatefulWidget {
@@ -12,6 +13,7 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
   bool _isDescending = true;
   String _filterPriority = 'all';
   String _searchQuery = '';
+  List<String> _readAnnouncements = [];
 
   // Consistent Color Scheme matching admin
   final Color _white = Colors.white;
@@ -22,6 +24,33 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
   final Color _greyText = Colors.grey.shade600;
   final Color _gradientStart = const Color(0xFFF3E5F5);
   final Color _gradientEnd = const Color(0xFFFFF5E6);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserReadAnnouncements();
+  }
+
+  Future<void> _loadUserReadAnnouncements() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        setState(() {
+          _readAnnouncements = List<String>.from(userData['readAnnouncements'] ?? []);
+        });
+      }
+    } catch (e) {
+      print('Error loading user read announcements: $e');
+    }
+  }
 
   String _formatDateTime(Timestamp? timestamp) {
     if (timestamp == null) return 'Unknown';
@@ -166,6 +195,30 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
     }
   }
 
+  Future<void> _markAnnouncementAsRead(String docId) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    // Skip if already read
+    if (_readAnnouncements.contains(docId)) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .update({
+        'readAnnouncements': FieldValue.arrayUnion([docId]),
+      });
+
+      // Update local state
+      setState(() {
+        _readAnnouncements.add(docId);
+      });
+    } catch (e) {
+      print('Error marking announcement as read: $e');
+    }
+  }
+
   void _showAnnouncementDetail(QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final title = data['title'] ?? 'Untitled';
@@ -174,8 +227,9 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
     final authorName = data['authorName'] ?? 'Admin';
     final timestamp = data['createdAt'];
 
-    // Increment view count when user opens detail
+    // Increment view count and mark as read when user opens detail
     _incrementViewCount(doc.id);
+    _markAnnouncementAsRead(doc.id);
 
     showDialog(
       context: context,
@@ -344,6 +398,10 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
         ),
       ),
     );
+  }
+
+  bool _isAnnouncementRead(String docId) {
+    return _readAnnouncements.contains(docId);
   }
 
   @override
@@ -537,6 +595,7 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
                     itemBuilder: (context, index) {
                       final doc = filteredDocs[index];
                       final data = doc.data() as Map<String, dynamic>;
+                      final isRead = _isAnnouncementRead(doc.id);
 
                       final title = data['title'] ?? 'Untitled';
                       final message = data['message'] ?? '';
@@ -554,11 +613,17 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [_white, _lightPurple.withValues(alpha: 0.3)],
+                              colors: isRead
+                                  ? [_offWhite, _lightPurple.withValues(alpha: 0.2)] // Dimmer for read announcements
+                                  : [_white, _lightPurple.withValues(alpha: 0.3)], // Brighter for unread
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),
+                            border: !isRead ? Border.all(
+                              color: _mediumPurple.withValues(alpha: 0.3),
+                              width: 2,
+                            ) : null,
                           ),
                           child: Material(
                             color: Colors.transparent,
@@ -592,12 +657,22 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 18,
-                                              color: _darkPurple,
+                                              color: isRead ? _greyText : _darkPurple,
                                             ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                        if (!isRead)
+                                          Container(
+                                            width: 12,
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              color: Colors.red,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        const SizedBox(width: 8),
                                         _buildPriorityChip(priority),
                                       ],
                                     ),
@@ -663,7 +738,7 @@ class _AllAnnouncementsScreenState extends State<AllAnnouncementsScreen> {
                                               Icon(Icons.touch_app, size: 12, color: _mediumPurple),
                                               const SizedBox(width: 4),
                                               Text(
-                                                'TAP TO READ',
+                                                isRead ? 'READ' : 'TAP TO READ',
                                                 style: TextStyle(
                                                   color: _mediumPurple,
                                                   fontSize: 10,
